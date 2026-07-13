@@ -1,8 +1,8 @@
 """initial
 
-Revision ID: e4c58d78d253
+Revision ID: 6ca98b7b7ebf
 Revises: 
-Create Date: 2026-05-22 20:04:37.995224
+Create Date: 2026-07-10 20:14:11.452790
 
 """
 from typing import Sequence, Union
@@ -11,8 +11,9 @@ from alembic import op
 import sqlalchemy as sa
 import fastapi_users_db_sqlalchemy
 
+
 # revision identifiers, used by Alembic.
-revision: str = 'e4c58d78d253'
+revision: str = '6ca98b7b7ebf'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -45,8 +46,8 @@ def upgrade() -> None:
     sa.Column('deck_name', sa.String(length=250), nullable=False),
     sa.Column('creator_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
     sa.Column('is_public', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['creator_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('deck_id')
     )
@@ -73,37 +74,51 @@ def upgrade() -> None:
     sa.Column('card_definition', sa.Text(), nullable=False),
     sa.Column('card_term_url', sa.String(length=250), nullable=True),
     sa.Column('card_definition_url', sa.String(length=250), nullable=True),
-    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ),
+    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('card_id')
     )
     op.create_index(op.f('ix_card_deck_id'), 'card', ['deck_id'], unique=False)
+    op.create_table('deck_rating',
+    sa.Column('deck_id', sa.Uuid(), nullable=False),
+    sa.Column('rater_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
+    sa.Column('rating', sa.Integer(), nullable=False),
+    sa.Column('rated_at', sa.DateTime(), nullable=False),
+    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['rater_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('deck_id', 'rater_id')
+    )
+    op.create_index(op.f('ix_deck_rating_deck_id'), 'deck_rating', ['deck_id'], unique=False)
+    op.create_index(op.f('ix_deck_rating_rater_id'), 'deck_rating', ['rater_id'], unique=False)
     op.create_table('deck_tag',
     sa.Column('tag_id', sa.Uuid(), nullable=False),
     sa.Column('deck_id', sa.Uuid(), nullable=False),
-    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ),
-    sa.ForeignKeyConstraint(['tag_id'], ['tag.tag_id'], ),
+    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tag_id'], ['tag.tag_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('tag_id', 'deck_id')
     )
     op.create_table('room',
     sa.Column('room_id', sa.Uuid(), nullable=False),
     sa.Column('host_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
-    sa.Column('deck_id', sa.Uuid(), nullable=False),
+    sa.Column('deck_id', sa.Uuid(), nullable=True),
     sa.Column('room_code', sa.String(length=6), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('room_status', sa.String(length=20), nullable=False),
-    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ),
+    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['host_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('room_id'),
     sa.UniqueConstraint('room_code')
     )
+    op.create_index(op.f('ix_room_deck_id'), 'room', ['deck_id'], unique=False)
     op.create_index(op.f('ix_room_host_id'), 'room', ['host_id'], unique=False)
     op.create_table('study_session',
     sa.Column('session_id', sa.Uuid(), nullable=False),
     sa.Column('student_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
     sa.Column('deck_id', sa.Uuid(), nullable=False),
-    sa.Column('started_at', sa.DateTime(), nullable=False),
-    sa.Column('completed_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ),
+    sa.Column('cards_due', sa.Integer(), nullable=False),
+    sa.Column('cards_studied', sa.Integer(), nullable=False),
+    sa.Column('started_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['deck_id'], ['deck.deck_id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['student_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('session_id')
     )
@@ -115,10 +130,10 @@ def upgrade() -> None:
     sa.Column('card_id', sa.Uuid(), nullable=False),
     sa.Column('ease_factor', sa.Float(), nullable=False),
     sa.Column('current_interval', sa.Integer(), nullable=False),
-    sa.Column('next_review_date', sa.Date(), nullable=False),
+    sa.Column('next_review_date', sa.Date(), nullable=True),
     sa.Column('times_reviewed', sa.Integer(), nullable=False),
-    sa.Column('last_rating', sa.String(length=6), nullable=False),
-    sa.ForeignKeyConstraint(['card_id'], ['card.card_id'], ),
+    sa.Column('last_rating', sa.String(length=6), nullable=True),
+    sa.ForeignKeyConstraint(['card_id'], ['card.card_id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['student_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('progress_id')
     )
@@ -128,19 +143,53 @@ def upgrade() -> None:
     op.create_table('room_participant',
     sa.Column('participant_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
     sa.Column('room_id', sa.Uuid(), nullable=False),
-    sa.Column('score', sa.Integer(), nullable=False),
-    sa.Column('placement', sa.String(length=10), nullable=False),
+    sa.Column('score', sa.Integer(), nullable=True),
+    sa.Column('placement', sa.String(length=10), nullable=True),
     sa.ForeignKeyConstraint(['participant_id'], ['user.id'], ),
-    sa.ForeignKeyConstraint(['room_id'], ['room.room_id'], ),
+    sa.ForeignKeyConstraint(['room_id'], ['room.room_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('participant_id', 'room_id')
     )
     op.create_index(op.f('ix_room_participant_room_id'), 'room_participant', ['room_id'], unique=False)
+    op.create_table('room_question',
+    sa.Column('room_question_id', sa.Uuid(), nullable=False),
+    sa.Column('room_id', sa.Uuid(), nullable=False),
+    sa.Column('prompt', sa.Text(), nullable=False),
+    sa.Column('prompt_url', sa.String(length=250), nullable=True),
+    sa.Column('order_in_room', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['room_id'], ['room.room_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('room_question_id')
+    )
+    op.create_index(op.f('ix_room_question_room_id'), 'room_question', ['room_id'], unique=False)
+    op.create_table('room_question_choice',
+    sa.Column('choice_id', sa.Uuid(), nullable=False),
+    sa.Column('room_question_id', sa.Uuid(), nullable=False),
+    sa.Column('choice_text', sa.Text(), nullable=False),
+    sa.Column('choice_url', sa.String(length=250), nullable=True),
+    sa.Column('is_correct', sa.Boolean(), nullable=False),
+    sa.Column('choice_order', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['room_question_id'], ['room_question.room_question_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('choice_id')
+    )
+    op.create_table('room_answer',
+    sa.Column('student_id', fastapi_users_db_sqlalchemy.generics.GUID(), nullable=False),
+    sa.Column('room_question_id', sa.Uuid(), nullable=False),
+    sa.Column('answer_id', sa.Uuid(), nullable=False),
+    sa.Column('is_correct', sa.Boolean(), nullable=False),
+    sa.ForeignKeyConstraint(['answer_id'], ['room_question_choice.choice_id'], ),
+    sa.ForeignKeyConstraint(['room_question_id'], ['room_question.room_question_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['student_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('student_id', 'room_question_id')
+    )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('room_answer')
+    op.drop_table('room_question_choice')
+    op.drop_index(op.f('ix_room_question_room_id'), table_name='room_question')
+    op.drop_table('room_question')
     op.drop_index(op.f('ix_room_participant_room_id'), table_name='room_participant')
     op.drop_table('room_participant')
     op.drop_index(op.f('ix_card_progress_student_id'), table_name='card_progress')
@@ -151,8 +200,12 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_study_session_deck_id'), table_name='study_session')
     op.drop_table('study_session')
     op.drop_index(op.f('ix_room_host_id'), table_name='room')
+    op.drop_index(op.f('ix_room_deck_id'), table_name='room')
     op.drop_table('room')
     op.drop_table('deck_tag')
+    op.drop_index(op.f('ix_deck_rating_rater_id'), table_name='deck_rating')
+    op.drop_index(op.f('ix_deck_rating_deck_id'), table_name='deck_rating')
+    op.drop_table('deck_rating')
     op.drop_index(op.f('ix_card_deck_id'), table_name='card')
     op.drop_table('card')
     op.drop_index(op.f('ix_oauth_account_oauth_name'), table_name='oauth_account')

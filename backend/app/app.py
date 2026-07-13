@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 from users import auth_backend, fastapi_users, google_oauth_client, SECRET
 from schemas import UserCreate, UserRead, UserUpdate
 from db import create_db_and_tables
-from routers import decks, cards, rooms
+from routers import decks, cards, rooms, study, progress, transform, tags
 from limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -34,7 +34,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("FRONTEND_URL"),
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "null"  # for local HTML files opened directly in browser
+    ],
+    # allow_origins=[os.getenv("FRONTEND_URL")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,5 +58,10 @@ app.include_router(fastapi_users.get_oauth_router(google_oauth_client, auth_back
 
 
 #app routes
+app.include_router(tags.router, prefix="/tags", tags=["tags"])
 app.include_router(decks.router, prefix="/decks", tags=["decks"])
-app.include_router(cards.router, prefix="/cards", tags=["decks"])
+app.include_router(cards.router, prefix="/cards", tags=["cards"])
+app.include_router(study.router, prefix="/study", tags=["study"])
+app.include_router(progress.router, prefix="/progress", tags=["progress"])
+app.include_router(transform.router, prefix="/transform", tags=["transform"])
+app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])

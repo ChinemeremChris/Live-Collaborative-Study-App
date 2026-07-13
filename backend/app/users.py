@@ -1,4 +1,4 @@
-from fastapi import Depends, Request
+from fastapi import Depends, Request, WebSocket, WebSocketException
 from fastapi_users import FastAPIUsers, BaseUserManager, UUIDIDMixin, InvalidPasswordException
 from fastapi_users.authentication import CookieTransport, AuthenticationBackend
 from fastapi_users.authentication.strategy import JWTStrategy
@@ -66,3 +66,19 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](
 )
 current_active_user = fastapi_users.current_user(active=True)
 current_optional_user = fastapi_users.current_user(active=True, optional=True)
+
+async def get_user_from_cookie(websocket: WebSocket, user_manager = Depends(get_user_manager)):
+    cookie = websocket.cookies.get("fastapiusersauth")
+    if not cookie:
+        raise WebSocketException(code=4001, reason="Not authenticated")
+    try:
+        strategy = get_jwt_strategy()
+        user = await strategy.read_token(cookie, user_manager)
+        if not user or not user.is_active:
+            raise WebSocketException(code=4001, reason="Invalid user")
+        yield user
+    except WebSocketException:
+        raise
+    except Exception:
+        raise WebSocketException(code=4001, reason="Authentication failed")
+    
