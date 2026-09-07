@@ -34,6 +34,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     participation: Mapped[list["RoomParticipant"]] = relationship(back_populates="participant")
     deck_rating: Mapped[list["DeckRating"]] = relationship(back_populates="rater")
     room_answer: Mapped[list["RoomAnswer"]] = relationship(back_populates="room_student")
+    student_review: Mapped[list["CardReview"]] = relationship(back_populates="card_student")
 
 
 
@@ -67,13 +68,14 @@ class Card(Base):
     __tablename__ = "card"
     card_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     deck_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deck.deck_id", ondelete="CASCADE"), index=True)
-    card_term: Mapped[str] = mapped_column(Text)
-    card_definition: Mapped[str] = mapped_column(Text)
+    card_term: Mapped[str | None] = mapped_column(Text, nullable=True)
+    card_definition: Mapped[str | None] = mapped_column(Text, nullable=True)
     card_term_url: Mapped[str|None] = mapped_column(String(250), nullable=True)
     card_definition_url: Mapped[str|None] = mapped_column(String(250), nullable=True)
 
     parent_deck: Mapped["Deck"] = relationship(back_populates="child_cards")
     card_progress: Mapped[list["CardProgress"]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    card_reviews: Mapped[list["CardReview"]] = relationship(back_populates="parent_card")
 
 class Tag(Base):
     __tablename__ = "tag"
@@ -98,10 +100,12 @@ class StudySession(Base):
     cards_due: Mapped[int] = mapped_column(default=0)
     cards_studied: Mapped[int] = mapped_column(default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), index=True)
     completed_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
     student: Mapped["User"] = relationship(back_populates="session")
     deck: Mapped["Deck"] = relationship(back_populates="deck_session")
+    card_reviews: Mapped[list["CardReview"]] = relationship(back_populates="review_session", cascade="all, delete-orphan")
 
 class CardProgress(Base):
     __tablename__ = "card_progress"
@@ -112,10 +116,24 @@ class CardProgress(Base):
     current_interval: Mapped[int] = mapped_column(default=1)
     next_review_date: Mapped[date|None] = mapped_column(Date, default=date.today(), index=True)
     times_reviewed: Mapped[int] = mapped_column(default=0)
+    last_review_date: Mapped[date|None] = mapped_column(Date, default=date.today(), index=True)
     last_rating: Mapped[str|None] = mapped_column(String(6), nullable=True)
 
     student: Mapped["User"] = relationship(back_populates="card_progress")
     card: Mapped["Card"] = relationship(back_populates="card_progress")
+
+class CardReview(Base):
+    __tablename__ = "card_review"
+    review_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("study_session.session_id", ondelete="CASCADE"), index=True)
+    card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("card.card_id"), index=True)
+    rating: Mapped[str|None] = mapped_column(String(6), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), index=True)
+
+    review_session: Mapped["StudySession"] = relationship(back_populates="card_reviews")
+    card_student: Mapped["User"] = relationship(back_populates="student_review")
+    parent_card: Mapped["Card"] = relationship(back_populates="card_reviews")
 
 class Room(Base):
     __tablename__ = "room"

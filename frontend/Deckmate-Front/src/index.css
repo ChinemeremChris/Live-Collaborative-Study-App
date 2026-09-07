@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+body{
+  font-family: "Poppins";
+}
+
+/* Chrome, Edge, Safari */
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Firefox */
+.hide-scrollbar {
+    scrollbar-width: none;
+}
+
+/* IE/old Edge */
+.hide-scrollbar {
+    -ms-overflow-style: none;
+}
+
+@theme {
+  --font-cormorant: "Cormorant Garmond", serif;
+  --font-poppins: "Poppins", serif;
+  --breakpoint-x10: 614px;
+  --breakpoint-x11: 750px;
+  --breakpoint-x112:1024px;
+  --breakpoint-x12: 1077px;
+}
+
+.bg-one{
+  background:
+    radial-gradient(circle at top left, #eef7ff 0%, transparent 45%),
+    radial-gradient(circle at bottom right, #f7f1ff 0%, transparent 40%),
+    linear-gradient(135deg, #f9fafb, #eef5ff);
+}
+
+.bg-two{
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99,102,241,.10), transparent 25%),
+    radial-gradient(circle at 80% 70%, rgba(59,130,246,.08), transparent 30%),
+    radial-gradient(circle at 50% 90%, rgba(168,85,247,.08), transparent 20%),
+  #f8fafc;
+}
+
+.bg-three{
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(#dbeafe 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.bg-four{
+  background-color: #fafafa;
+  background-image:
+    linear-gradient(#ececec 1px, transparent 1px),
+    linear-gradient(90deg, #ececec 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.bg-five{
+  background:
+    repeating-linear-gradient(45deg,#f8fafc,#f8fafc 18px,#f1f5f9 18px,#f1f5f9 36px);
+}
+
+.bg-six{
+  background:
+    linear-gradient(135deg,#fffef8,#faf7f1,#f5efe3);
+}
+
+.perspective{
+  perspective: 1000px;
+}
+
+.card{
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease;
+}
+
+.card.flipped{
+  transform: rotateY(180deg);
+}
+
+.front, .back{
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.back{
+  transform: rotateY(180deg);
+}
+
+@media (min-width: 768px) {
+    .front,
+    .back {
+        inset: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .front,
+    .back {
+        inset: 2rem;
+    }
+}

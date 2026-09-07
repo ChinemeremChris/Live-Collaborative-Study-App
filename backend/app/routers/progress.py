@@ -1,15 +1,15 @@
 import logging
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, Body, Path
-from users import current_active_user, current_optional_user
+from app.users import current_active_user, current_optional_user
 from typing import Annotated
 from sqlalchemy import select, delete, func, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from db import get_async_session, User, CardProgress, StudySession, Card, Deck
-from services.sm2 import SM2
-from limiter import limiter
+from app.db import get_async_session, User, CardProgress, StudySession, Card, Deck, CardReview
+from app.services.sm2 import SM2
+from app.limiter import limiter
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,13 +40,24 @@ async def InputProgress(request: Request, card_id: Annotated[uuid.UUID, Path()],
             session.add(card_progress)
             await session.flush()
             await session.refresh(card_progress)
+        card_review = CardReview(
+            student_id = user.id,
+            card_id = card_id,
+            session_id = session_id,
+            rating = rating
+        )
+        session.add(card_review)
+        await session.flush()
+        await session.refresh(card_review)
         return_dict = SM2(card_progress.ease_factor, rating, card_progress.times_reviewed, card_progress.current_interval)
         card_progress.ease_factor = return_dict["ease_factor"]
         card_progress.current_interval = return_dict["interval"]
         card_progress.next_review_date = return_dict["next_review_date"]
         card_progress.times_reviewed = return_dict["times_reviewed"]
+        card_progress.last_review_date = date.today()
         card_progress.last_rating = rating
         study_session.cards_studied += 1
+        study_session.last_activity_at = datetime.now(timezone.utc)
         await session.commit()
         return {
             "interval": return_dict["interval"]
@@ -59,7 +70,7 @@ async def InputProgress(request: Request, card_id: Annotated[uuid.UUID, Path()],
         logger.error(f"InputProgress failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to input card progress")
     
-@router.delete("/{card_id}")
+@router.patch("/{card_id}")
 @limiter.limit("20/minute")
 async def ResetCardProgress(request: Request, card_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:

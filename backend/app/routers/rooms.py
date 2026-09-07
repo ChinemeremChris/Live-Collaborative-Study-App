@@ -3,10 +3,10 @@ from fastapi import APIRouter, Depends, Query, Path, Body, Request, HTTPExceptio
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from limiter import limiter
-from users import current_active_user, current_optional_user, get_user_from_cookie
-from db import get_async_session, async_session_maker, User, Room, RoomParticipant, RoomQuestion, RoomQuestionChoice, RoomAnswer, Card, Deck
-from schemas import RoomOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut
+from app.limiter import limiter
+from app.users import current_active_user, current_optional_user, get_user_from_cookie
+from app.db import get_async_session, async_session_maker, User, Room, RoomParticipant, RoomQuestion, RoomQuestionChoice, RoomAnswer, Card, Deck
+from app.schemas import RoomOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut
 from typing import Annotated
 import uuid
 from datetime import datetime, timezone
@@ -56,11 +56,11 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Body()], us
             options = [{"definition": card.card_definition, "definition_url": card.card_definition_url, "is_correct": True}] + distractors
             random.shuffle(options)
             room_question = RoomQuestion(
-                    room_id = room.room_id,
-                    prompt = card.card_term,
-                    prompt_url = card.card_term_url,
-                    order_in_room = index
-                )
+                room_id = room.room_id,
+                prompt = card.card_term,
+                prompt_url = card.card_term_url,
+                order_in_room = index
+            )
             session.add(room_question)
             await session.flush()
             question_choices = [
@@ -134,9 +134,9 @@ async def JoinRoom(request: Request, room_code: Annotated[str, Path()], user: Us
 
 @router.get("/participants/me")
 @limiter.limit("10/minute")
-async def GetMyRooms(request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def GetMyRooms(request: Request, limit: Annotated[int, Query()] = 20, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
-        rooms_query = select(Room, RoomParticipant).options(selectinload(Room.host), selectinload(Room.deck)).outerjoin(Room.participation).where(RoomParticipant.participant_id == user.id)
+        rooms_query = select(Room, RoomParticipant).options(selectinload(Room.host), selectinload(Room.deck)).outerjoin(Room.participation).where(RoomParticipant.participant_id == user.id).order_by(Room.created_at.desc()).limit(limit)
         rooms_result = await session.execute(rooms_query)
         rows = rooms_result.all()
         room_out_list = [

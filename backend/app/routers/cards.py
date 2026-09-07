@@ -1,13 +1,13 @@
 import logging
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, Body, Path
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from limiter import limiter
-from users import current_active_user, current_optional_user
-from db import get_async_session, User, Card, Deck
-from schemas import ImageUploadRequest, CardOutNoDue, CardCreate, CardUpdateID
-from services.s3 import generate_upload_url, batch_delete_image
+from app.limiter import limiter
+from app.users import current_active_user, current_optional_user
+from app.db import get_async_session, User, Card, Deck
+from app.schemas import ImageUploadRequest, CardOutNoDue, CardOutDeckNameNoDue, CardCreate, CardUpdateID
+from app.services.s3 import generate_upload_url, batch_delete_image
 from typing import Annotated
 import uuid
 
@@ -28,6 +28,39 @@ async def RequestImageUpload(request: Request, image_obj: Annotated[ImageUploadR
     except Exception as e:
         logger.error(f"RequestImageUpload failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate upload url for image")
+
+@router.get("/{deck_id}")
+@limiter.limit("10/minute")
+async def GetDeckCards(request: Request, deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_optional_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        if user:
+            cards_query = select(Card, Deck).join(Deck).where(Card.deck_id == deck_id, or_(Deck.is_public == True, Deck.creator_id == user.id))
+            cards_result = await session.execute(cards_query)
+            rows = cards_result.all()
+        else:
+            cards_query = select(Card, Deck).join(Deck).where(Card.deck_id == deck_id, Deck.is_public == True)
+            cards_result = await session.execute(cards_query)
+            rows = cards_result.all()
+        if not rows:
+            raise HTTPException(status_code=404, detail="No public deck found")
+        cards = [
+            CardOutDeckNameNoDue(
+                card_id=card.Card.card_id,
+                deck_id=card.Card.deck_id,
+                deck_name=card.Deck.deck_name,
+                card_term=card.Card.card_term,
+                card_definition=card.Card.card_definition,
+                card_term_url=card.Card.card_term_url,
+                card_definition_url=card.Card.card_definition_url
+            )
+        for card in rows]
+        return cards
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GetDeckCard failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch cards")    
+    
 
 @router.get("/{deck_id}/{card_id}")
 @limiter.limit("10/minute")
@@ -61,6 +94,10 @@ async def AddCard(request: Request, deck_id: Annotated[uuid.UUID, Path()], card_
         deck = result.scalar_one_or_none()
         if not deck:
             raise HTTPException(status_code=404, detail="Deck belonging to user not found")
+        if not card_data.card_term and not card_data.card_term_url:
+            raise HTTPException(status_code=400, detail="Card must have either a term or an image")
+        if not card_data.card_definition and not card_data.card_definition_url:
+            raise HTTPException(status_code=400, detail="Card must have either a definition or an image")
         add_card = Card(
             deck_id = deck_id,
             card_term = card_data.card_term,
@@ -93,6 +130,10 @@ async def UpdateCard(request: Request, deck_id: Annotated[uuid.UUID, Path()], ca
         card = result.scalar_one_or_none()
         if not card:
             raise HTTPException(status_code=404, detail="Card belonging to user not found")
+        if not updated_card.card_term and not updated_card.card_term_url:
+            raise HTTPException(status_code=400, detail="Card must have either a term or an image")
+        if not updated_card.card_definition and not updated_card.card_definition_url:
+            raise HTTPException(status_code=400, detail="Card must have either a definition or an image")
         card.card_term = updated_card.card_term
         card.card_definition = updated_card.card_definition
         images_to_be_deleted = []

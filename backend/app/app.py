@@ -2,11 +2,11 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from fastapi.responses import HTMLResponse
-from users import auth_backend, fastapi_users, google_oauth_client, SECRET
-from schemas import UserCreate, UserRead, UserUpdate
-from db import create_db_and_tables
-from routers import decks, cards, rooms, study, progress, transform, tags
-from limiter import limiter
+from app.users import auth_backend, fastapi_users, google_oauth_client, SECRET
+from app.schemas import UserCreate, UserRead, UserUpdate
+from app.db import create_db_and_tables
+from app.routers import account, decks, cards, rooms, study, progress, transform, tags
+from app.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 import os
@@ -53,9 +53,10 @@ app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/auth/jw
 app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/auth", tags=["auth"])
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix="/auth", tags=["auth"])
 app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", tags=["auth"])
+app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
 #add redirect url to oauth_router: redirect to frontend
-app.include_router(fastapi_users.get_oauth_router(google_oauth_client, auth_backend, SECRET, associate_by_email=True, is_verified_by_default=True), prefix="/auth/google", tags=["auth"])
-
+app.include_router(fastapi_users.get_oauth_router(google_oauth_client, auth_backend, SECRET, redirect_url=os.getenv("FRONTEND_URL_CALLBACK"), associate_by_email=True, is_verified_by_default=True), prefix="/auth/google", tags=["auth"])
+app.include_router(account.router, prefix="/account", tags=["account"])
 
 #app routes
 app.include_router(tags.router, prefix="/tags", tags=["tags"])

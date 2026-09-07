@@ -2,11 +2,11 @@ from fastapi_users import schemas
 from pydantic import BaseModel
 import uuid
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
-    fname: str
-    lname: str
+    fname: Optional[str] = None
+    lname: Optional[str] = None
 
 class UserCreate(schemas.BaseUserCreate):
     fname: str
@@ -15,6 +15,18 @@ class UserCreate(schemas.BaseUserCreate):
 class UserUpdate(schemas.BaseUserUpdate):
     fname: Optional[str] = None
     lname: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+class UserStats(BaseModel):
+    study_streak: int
+    study_week_list: list[bool]
+    week_cards_studied: int
+    num_decks: int
+    public_decks: int
+    rooms_played: int
+    rooms_won: int
+    num_cards_due: int
 
 class DeckIn(BaseModel):
     deck_name: str
@@ -24,15 +36,15 @@ class DeckIn(BaseModel):
 class DeckCreate(BaseModel):
     deck_name: str
     is_public: bool
-    tags: list[str]
-    cards: list[CardCreate]
+    tags: list[uuid.UUID] | None = None
+    cards: list["CardCreate"]
 
 class DeckUpdate(BaseModel):
     deck_name: str
     is_public: bool
     tags: list[str]
-    updated_cards: list[CardUpdateID]
-    new_cards: list[CardCreate]
+    updated_cards: list["CardUpdateID"]
+    new_cards: list["CardCreate"]
     deleted_cards: list[str]
 
 class DeckCreateOut(BaseModel):
@@ -48,6 +60,11 @@ class DeckSearch(BaseModel):
     card_count: int
     avg_rating: float | None
     rating_count: int
+
+class DeckSearchSuggestion(BaseModel):
+    deck_id: uuid.UUID
+    deck_name: str
+    creator_name: str
 
 class MyDeckOut(BaseModel):
     deck_id: uuid.UUID
@@ -69,16 +86,26 @@ class DeckOut(BaseModel):
 class DeckWithCardsOut(BaseModel):
     deck_id: uuid.UUID
     deck_name: str
+    creator_id: uuid.UUID | None
     creator_name: str
+    creator_deck_count: int | None
     is_public: bool
     created_at: datetime
-    updated_at: datetime
+    updated_at: date
     card_count: int
-    cards: list[CardOut]
+    preview_cards: list["CardOutNoDue"]
     tags: list[dict]
     avg_rating: float | None
     num_ratings: int | None
     my_rating: int | None
+    study_time_minutes: int | None
+    due_cards_count: int | None
+    mastered_cards: int | None
+    study_session_count: int | None
+    last_session: date | None
+    cards_reviewed: int | None
+    first_review_date: date | None
+
 
 class BulkDeckUpdateOut(BaseModel):
     deck_id: uuid.UUID
@@ -86,14 +113,14 @@ class BulkDeckUpdateOut(BaseModel):
     new_card_ids: list[dict]
 
 class TextImportOut(BaseModel):
-    parsed_cards: list[CardCreate]
+    parsed_cards: list["CardCreate"]
     unparsed_lines: list[str]
     unparsed_count: int
 
 class CardCreate(BaseModel):
     card_temp_id: int
-    card_term: str
-    card_definition: str
+    card_term: Optional[str] = None
+    card_definition: Optional[str] = None
     card_term_url: Optional[str] = None
     card_definition_url: Optional[str] = None
 
@@ -111,17 +138,26 @@ class CardUpdateID(BaseModel):
 class CardOut(BaseModel):
     card_id: uuid.UUID
     deck_id: uuid.UUID
-    card_term: str
-    card_definition: str
+    card_term: Optional[str] = None
+    card_definition: Optional[str] = None
     card_term_url: Optional[str] = None
     card_definition_url: Optional[str] = None
-    is_due: bool
+    is_due: bool | None
 
 class CardOutNoDue(BaseModel):
     card_id: uuid.UUID
     deck_id: uuid.UUID
-    card_term: str
-    card_definition: str
+    card_term: Optional[str] = None
+    card_definition: Optional[str] = None
+    card_term_url: Optional[str] = None
+    card_definition_url: Optional[str] = None
+
+class CardOutDeckNameNoDue(BaseModel):
+    card_id: uuid.UUID
+    deck_id: uuid.UUID
+    deck_name: str
+    card_term: Optional[str] = None
+    card_definition: Optional[str] = None
     card_term_url: Optional[str] = None
     card_definition_url: Optional[str] = None
 
@@ -137,12 +173,30 @@ class StudySessionOut(BaseModel):
     started_at: datetime
     completed_at: datetime | None
 
+class StudySessionInfo(BaseModel):
+    session_id: uuid.UUID
+    deck_name: str
+    cards_due: int
+    cards_studied: int | None
+    session_time: int | None
+    easy: int | None
+    medium: int | None
+    hard: int | None
+    forgot: int | None
+
+class DueDecksOut(BaseModel):
+    deck_id: uuid.UUID
+    deck_name: str
+    total_cards: int
+    num_cards_due: int
+    avg_rating: float | None
+
 class CardProgressIn(BaseModel):
     card_id: uuid.UUID
     current_rating: str
 
 class CardProgressOut(BaseModel):
-    card_term: str
+    card_term: Optional[str] = None
     next_review_date: str|None
     times_reviewed: int
     last_rating: str
@@ -189,14 +243,14 @@ class RoomQAOut(BaseModel):
     room_question_id: uuid.UUID
     prompt: str
     prompt_url: Optional[str]
-    choices: list[RoomChoiceOut]
+    choices: list["RoomChoiceOut"]
 
 class RoomInfoOut(BaseModel):
     room_id: uuid.UUID
     deck_name: str
     room_status: str
     created_at: datetime
-    questions: list[RoomQAOut]
+    questions: list["RoomQAOut"]
     scores: list[dict]
 
 

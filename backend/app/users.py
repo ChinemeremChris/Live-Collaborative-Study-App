@@ -3,11 +3,11 @@ from fastapi_users import FastAPIUsers, BaseUserManager, UUIDIDMixin, InvalidPas
 from fastapi_users.authentication import CookieTransport, AuthenticationBackend
 from fastapi_users.authentication.strategy import JWTStrategy
 from httpx_oauth.clients.google import GoogleOAuth2
-from db import User, get_user_db
+from app.db import User, get_user_db
 import uuid
 import os
 from dotenv import load_dotenv
-from schemas import UserCreate
+from app.schemas import UserCreate
 
 load_dotenv()
 
@@ -31,9 +31,11 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     async def validate_password(self, password: str, user: UserCreate | User):
         if len(password) < 8:
             raise InvalidPasswordException(reason="Password should be at least 8 characters")
-        if user.fname in password or user.lname in password:
+        if user.fname.lower() and user.fname.lower() in password:
             raise InvalidPasswordException(reason="Name cannot be contained in password")
-        if user.email in password:
+        if user.lname.lower() and user.lname.lower() in password:
+            raise InvalidPasswordException(reason="Name cannot be contained in password")
+        if user.email.lower() and user.email.lower() in password:
             raise InvalidPasswordException(reason="Email cannot be contained in password")
 
     async def on_after_register(self, user: User, request: Request | None = None):

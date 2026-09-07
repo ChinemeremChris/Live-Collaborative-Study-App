@@ -1,15 +1,15 @@
 import logging
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, Body, Path
-from users import current_active_user, current_optional_user
-from schemas import TextImportIn
+from app.users import current_active_user, current_optional_user
+from app.schemas import TextImportIn
 from typing import Annotated
 from sqlalchemy import select, delete, func, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from db import get_async_session, User, CardProgress, StudySession, Card, Deck
-from schemas import TextImportOut, CardCreate
-from limiter import limiter
-from services.parser import ParseText
+from app.db import get_async_session, User, CardProgress, StudySession, Card, Deck
+from app.schemas import TextImportOut, CardCreate
+from app.limiter import limiter
+from app.services.parser import ParseText
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
