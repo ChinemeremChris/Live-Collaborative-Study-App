@@ -47,9 +47,12 @@ async def GetStats (request: Request, user: User = Depends(current_active_user),
     study_sessions_query = select(func.date(StudySession.started_at).label("study_date")).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0).order_by(func.date(StudySession.started_at).desc())
     study_sessions_result = await session.execute(study_sessions_query)
     study_sessions = study_sessions_result.scalars().all()
+    study_sessions = [d if isinstance(d, date) else date.fromisoformat(str(d)) for d in study_sessions]
+    print(study_sessions)
     streak = 0
     today = date.today()
     if not study_sessions or study_sessions[0] != today:
+        print(f"{study_sessions[0]} does not match {today}")
         streak = 0
     else:
         streak = 1

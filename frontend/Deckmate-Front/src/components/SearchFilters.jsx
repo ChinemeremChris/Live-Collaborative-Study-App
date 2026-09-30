@@ -193,7 +193,7 @@ export const SearchFilters = ({ isVisible, setFilterOpen }) => {
                 )
             }
 
-            <div className={`${isVisible ? 'translate-y-0' : 'translate-y-full'} transition-transform duration-300 z-50 fixed top-0 left-0 bg-slate-100 flex flex-col px-7 w-screen h-full md:w-2/3 md:h-[60vh] ${isVisible ? 'md: opacity-100 pointer-events-auto' : 'md:opacity-0 pointer-events-none'} md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl`}>
+            <div className={`${isVisible ? 'translate-y-0' : 'translate-y-full'} overflow-y-scroll transition-transform duration-300 z-50 fixed top-0 left-0 bg-slate-100 flex flex-col px-7 w-screen h-full md:w-2/3 md:h-[60vh] ${isVisible ? 'md:opacity-100 pointer-events-auto' : 'md:opacity-0 pointer-events-none'} md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl`}>
                 {/* top */}
                 <div className="top-0 bg-slate-100 flex shrink-0 justify-between items-center py-5">
                     <div className="flex items-center gap-3 font-bold text-3xl">

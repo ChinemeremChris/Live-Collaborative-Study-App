@@ -12,6 +12,8 @@ import { Discover } from './pages/discover'
 import { CardView } from './pages/cardView'
 import { StudyView } from './pages/studyView'
 import { StudySummary } from './pages/StudySummary'
+import { DeckCreate } from './pages/deckCreation'
+import { DeckEdit } from './pages/deckEdit'
 
 
 const router = createBrowserRouter([
@@ -41,6 +43,14 @@ const router = createBrowserRouter([
       {
         path: "/decks/:deck_id",
         element: <DeckView />
+      },
+      {
+        path: "/decks/create",
+        element: <DeckCreate />
+      },
+      {
+        path: "/edit/:deck_id",
+        element: <DeckEdit />
       },
       {
         path: "/discover",

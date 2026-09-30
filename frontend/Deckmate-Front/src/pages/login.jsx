@@ -78,7 +78,6 @@ export const Login = () =>{
                 return
             }
             const result = await response.json()
-            console.log(result.authorization_url)
             window.location.href = result.authorization_url
         }catch(error){
             if (error instanceof TypeError){
@@ -96,7 +95,7 @@ export const Login = () =>{
         mutationFn: HandleLogin,
         onSuccess: () => {
             console.log("success")
-            navigate("/")
+            navigate("/", { replace: true })
         },
         onError: (error) => {
             toast.error(error.message)

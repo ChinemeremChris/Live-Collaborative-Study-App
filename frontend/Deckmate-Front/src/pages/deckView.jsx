@@ -1,7 +1,7 @@
 import { QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import toast from "react-hot-toast"
-import { useNavigate, useParams } from "react-router-dom"
+import { replace, useNavigate, useParams } from "react-router-dom"
 import { PageSpinner } from "../components/PageSpinner"
 import { RatingStars } from "../components/RatingStars"
 import { RateInput } from "../components/RateInput"
@@ -10,11 +10,13 @@ import { CompartNumber } from "../lib/compact"
 import { TimeAgo } from "../lib/timeAgo"
 import { CardStackIcon } from "../components/CardStackIcon"
 import { Clock, Gamepad2, Minus, Play, Plus, SquarePen, Trash2 } from "lucide-react"
+import { DeleteModal } from "../components/DeleteModal"
 
 export const DeckView = () => {
     const { user, userLoading } = useAuth()
     const [rating, setRating] = useState()
     const [fullTags, setFullTags] = useState(false)
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const { deck_id } = useParams()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -59,6 +61,26 @@ export const DeckView = () => {
         return response.json()
     }
 
+    const HandleDeckDelete = async () => {
+        setDeleteModalOpen(false)
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/decks/${deck?.deck_id}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        })
+        if (!response.ok){
+            const error = await response.json()
+            if (response.status === 422){
+                const message = error.detail.map(e => e.msg).join(', ')
+                throw new Error(message)
+            }
+            throw new Error(error.detail || "Error deleting deck")
+        }
+        return response.json()
+    }
+
     const {
         data: deck,
         isLoading: deck_loading,
@@ -83,6 +105,22 @@ export const DeckView = () => {
             queryClient.invalidateQueries({
                 queryKey: ["deck", deck_id]
             })
+        }
+    })
+
+    const {
+        mutate: deleteDeck
+    } = useMutation({
+        mutationFn: HandleDeckDelete,
+        onError: (error) => {
+            toast.error(error.message)
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({
+                queryKey: ["deck", deck_id]
+            })
+            toast.success("Deck deleted")
+            navigate(`/`, { replace: true })
         }
     })
 
@@ -247,15 +285,18 @@ export const DeckView = () => {
                                         </div>
                                         {
                                             (!userLoading && user && deck?.creator_id === user?.id) && 
-                                                <div className="flex justify-between text-base font-semibold text-white border-b border-slate-300 pb-4">
-                                                    <button className="flex bg-blue-500 rounded-xl py-2 px-8 md:px-4 lg:px-17 gap-1 justify-center items-center">
-                                                        <SquarePen className="w-4 h-4"/>
-                                                        <div>Edit</div>
-                                                    </button>
-                                                    <button className="flex bg-red-500 rounded-xl py-2 px-8 md:px-4 lg:px-17 gap-1 justify-center items-center">
-                                                        <Trash2 className="w-4 h-4"/>
-                                                        <div>Delete</div>
-                                                    </button>
+                                                <div>
+                                                    <div className="flex justify-between text-base font-semibold text-white border-b border-slate-300 pb-4">
+                                                        <button className="flex bg-blue-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
+                                                            <SquarePen className="w-4 h-4"/>
+                                                            <div>Edit</div>
+                                                        </button>
+                                                        <button onClick={() => setDeleteModalOpen(true)} className="flex bg-red-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
+                                                            <Trash2 className="w-4 h-4"/>
+                                                            <div>Delete</div>
+                                                        </button>
+                                                    </div>
+                                                    <DeleteModal deleteModalOpen={deleteModalOpen} setDeleteModalOpen={setDeleteModalOpen} deleteDeck={deleteDeck} />
                                                 </div>
                                         }
                                         <div className="flex flex-wrap gap-2">

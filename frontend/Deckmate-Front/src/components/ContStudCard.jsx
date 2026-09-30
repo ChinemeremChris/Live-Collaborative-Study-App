@@ -6,7 +6,7 @@ export const ContStudCard = ({ card_name, num_cards, rating, cards_due, handleCl
     return (
         <div onClick={handleClick} className="hover:cursor-pointer flex flex-col shrink-0 rounded-lg bg-white p-3 w-3/4 sm:w-60 md:w-80 lg:w-90 sm:p-8 gap-2 sm:gap-3">
             {/*title*/}
-            <div className="font-semibold text-lg md:text-xl">{card_name}</div>
+            <div className="font-semibold text-lg md:text-xl line-clamp-1">{card_name}</div>
             {/*subtitle*/}
             <div className="flex gap-5 text-sm md:text-base">
                 <div>{`${num_cards} cards`}</div>

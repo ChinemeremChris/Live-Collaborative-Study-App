@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 from app.users import current_active_user, current_optional_user, get_user_from_cookie
 from app.db import get_async_session, async_session_maker, User, Room, RoomParticipant, RoomQuestion, RoomQuestionChoice, RoomAnswer, Card, Deck
-from app.schemas import RoomOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut
+from app.schemas import RoomOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut, RoomCard
 from typing import Annotated
 import uuid
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.post("/")
 @limiter.limit("3/minute")
-async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], roomQA: Annotated[list[RoomCard], Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
         deck_query = select(Deck).where(Deck.deck_id == deck_id)
         deck_result = await session.execute(deck_query)
@@ -50,15 +50,16 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Body()], us
         cards_query = select(Card).where(Card.deck_id == deck_id)
         cards_result = await session.execute(cards_query)
         cards = cards_result.scalars().all()
-        for index, card in enumerate(cards, 0):
-            other_answers = [{"definition": c.card_definition, "definition_url": c.card_definition_url, "is_correct": False} for c in cards if c.card_definition != card.card_definition]
+        card_dict = {card.card_id: card for card in cards}
+        for index, question in enumerate(roomQA, 0):
+            other_answers = [{"definition": question.get("short_answer"), "definition_url": card_dict.get(question.get("card_id")).card_definition_url, "is_correct": False} for q in question]
             distractors = random.sample(other_answers, min(len(other_answers), 3))
-            options = [{"definition": card.card_definition, "definition_url": card.card_definition_url, "is_correct": True}] + distractors
+            options = [{"definition": question.get("short_answer"), "definition_url": card_dict.get(question.get("card_id")).card_definition_url, "is_correct": True}] + distractors
             random.shuffle(options)
             room_question = RoomQuestion(
                 room_id = room.room_id,
-                prompt = card.card_term,
-                prompt_url = card.card_term_url,
+                prompt = question.room_question,
+                prompt_url = card_dict.get(question.get("card_id")).card_term_url,
                 order_in_room = index
             )
             session.add(room_question)
@@ -66,14 +67,39 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Body()], us
             question_choices = [
                 RoomQuestionChoice(
                     room_question_id = room_question.room_question_id,
-                    choice_text = option["definition"],
-                    choice_url = option["definition_url"],
-                    is_correct = option["is_correct"],
+                    choice_text = option.get("definition"),
+                    choice_url = option.get("definition_url"),
+                    is_correct = option.get("is_correct"),
                     choice_order = i
                 )
                 for i, option in enumerate(options, 0)
             ]
             session.add_all(question_choices)
+
+        # for index, card in enumerate(cards, 0):
+        #     other_answers = [{"definition": c.card_definition, "definition_url": c.card_definition_url, "is_correct": False} for c in cards if c.card_definition != card.card_definition]
+        #     distractors = random.sample(other_answers, min(len(other_answers), 3))
+        #     options = [{"definition": card.card_definition, "definition_url": card.card_definition_url, "is_correct": True}] + distractors
+        #     random.shuffle(options)
+        #     room_question = RoomQuestion(
+        #         room_id = room.room_id,
+        #         prompt = card.card_term,
+        #         prompt_url = card.card_term_url,
+        #         order_in_room = index
+        #     )
+        #     session.add(room_question)
+        #     await session.flush()
+        #     question_choices = [
+        #         RoomQuestionChoice(
+        #             room_question_id = room_question.room_question_id,
+        #             choice_text = option["definition"],
+        #             choice_url = option["definition_url"],
+        #             is_correct = option["is_correct"],
+        #             choice_order = i
+        #         )
+        #         for i, option in enumerate(options, 0)
+        #     ]
+        #     session.add_all(question_choices)
 
 
         room_participant = RoomParticipant(

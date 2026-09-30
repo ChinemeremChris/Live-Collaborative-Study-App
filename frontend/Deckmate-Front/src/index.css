@@ -22,6 +22,8 @@ body{
 @theme {
   --font-cormorant: "Cormorant Garmond", serif;
   --font-poppins: "Poppins", serif;
+  --font-montserrat: "Montserrat", serif;
+  --font-ibm: "IBM Plex Serif", serif;
   --breakpoint-x10: 614px;
   --breakpoint-x11: 750px;
   --breakpoint-x112:1024px;

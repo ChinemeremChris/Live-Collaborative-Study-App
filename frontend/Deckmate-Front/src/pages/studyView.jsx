@@ -135,6 +135,15 @@ export const StudyView = () => {
     } = useMutation({
         mutationFn: EndSession,
         onSuccess: (data) => {
+            queryClient.invalidateQueries({
+                queryKey: ["due_decks"]
+            })
+            queryClient.invalidateQueries({
+                queryKey: ["studySessions", { limit: 3 }]
+            })
+            queryClient.invalidateQueries({
+                queryKey: ["stats"]
+            })
             navigate(`/study/summary/${deck_id}?session_id=${sessionID}`, { replace: true })
         },
         onError: (error) => {
@@ -165,7 +174,7 @@ export const StudyView = () => {
             setSearchParams((prev) => {
                 prev.set("session_id", data?.study_session)
                 return prev
-            })
+            }, { replace: true })
         },
         onError: (error) => {
             toast.error(error.message)

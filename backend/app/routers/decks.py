@@ -440,8 +440,10 @@ async def BulkCreate(deck_data: Annotated[DeckCreate, Body()], user: User = Depe
         add_cards = []
         for card in deck_data.cards:
             if not card.card_term and not card.card_term_url:
+                print(f"card term: {card.card_term}\n card term url: {card.card_term_url}")
                 raise HTTPException(status_code=400, detail="Card must have either a term or an image")
             if not card.card_definition and not card.card_definition_url:
+                print(f"card definition: {card.card_definition}\n card definition url: {card.card_definition_url}")
                 raise HTTPException(status_code=400, detail="Card must have either a definition or an image")
             add_cards.append(Card(
                 deck_id=deck.deck_id,

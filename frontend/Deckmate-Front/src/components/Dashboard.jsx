@@ -225,7 +225,7 @@ export const Dashboard = () => {
                             <div className="flex flex-col gap-2">
                                 {
                                     studySessions.map((session) => (
-                                        <DashSession key={session.session_id} card_title={session.deck_name} session_date={session.started_at} num_cards_studied={session.cards_studies} />
+                                        <DashSession key={session.session_id} card_title={session.deck_name} session_date={session.started_at} num_cards_studied={session.cards_studied} />
                                     ))
                                 }
                             </div>

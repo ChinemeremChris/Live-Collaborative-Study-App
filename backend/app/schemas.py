@@ -232,6 +232,11 @@ class StudySessionOut(BaseModel):
     started_at: datetime
     completed_at: datetime | None
 
+class RoomCard(BaseModel):
+    card_id: uuid.UUID
+    room_question: str
+    short_answer : str | None
+
 class RoomChoiceOut(BaseModel):
     choice_id: uuid.UUID
     choice_text: str
