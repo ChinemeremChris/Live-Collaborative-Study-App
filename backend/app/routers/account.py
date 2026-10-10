@@ -42,7 +42,7 @@ async def CompleteOauthProfile(request: Request, user_data: Annotated[UserUpdate
         raise HTTPException(status_code=500, detail="Failed to complete OAuth profile")
 
 @router.get("/stats")
-@limiter.limit("3/min")
+@limiter.limit("10/min")
 async def GetStats (request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     study_sessions_query = select(func.date(StudySession.started_at).label("study_date")).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0).order_by(func.date(StudySession.started_at).desc())
     study_sessions_result = await session.execute(study_sessions_query)
@@ -52,7 +52,6 @@ async def GetStats (request: Request, user: User = Depends(current_active_user),
     streak = 0
     today = date.today()
     if not study_sessions or study_sessions[0] != today:
-        print(f"{study_sessions[0]} does not match {today}")
         streak = 0
     else:
         streak = 1

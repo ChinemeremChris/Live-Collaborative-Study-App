@@ -14,6 +14,14 @@ import { StudyView } from './pages/studyView'
 import { StudySummary } from './pages/StudySummary'
 import { DeckCreate } from './pages/deckCreation'
 import { DeckEdit } from './pages/deckEdit'
+import { RoomCreate } from './pages/roomCreation'
+import { RoomLobby } from './pages/roomLobby'
+import { RoomJoin } from './pages/RoomJoin'
+import { GameScreen } from './pages/gameScreen'
+import { RoomProvider } from './contexts/RoomContext'
+import { ProtectedRoutes } from './components/ProtectedRoutes'
+import { RoundResults } from './components/RoundResults'
+import { GameResult } from './pages/gameResult'
 
 
 const router = createBrowserRouter([
@@ -30,8 +38,22 @@ const router = createBrowserRouter([
     element: <AuthCallback />
   },
   {
-    path: "/complete-profile",
-    element: <CompleteProfile />
+    path: "/temp",
+    element: <RoundResults />
+  },
+  {
+    element: <ProtectedRoutes />,
+    children: [
+      { path: "/complete-profile", element: <CompleteProfile /> },
+      { path: "/rooms/join", element: <RoomJoin /> },
+      {
+        element: <RoomProvider />,
+        children: [
+          { path: "/rooms/lobby/:room_id", element: <RoomLobby /> },
+          { path: "/rooms/game/:room_id", element: <GameScreen /> }
+        ]
+      }
+    ]
   },
   {
     element: <MainLayout />,
@@ -45,12 +67,15 @@ const router = createBrowserRouter([
         element: <DeckView />
       },
       {
-        path: "/decks/create",
-        element: <DeckCreate />
-      },
-      {
-        path: "/edit/:deck_id",
-        element: <DeckEdit />
+        element: <ProtectedRoutes />,
+        children: [
+          { path: "/decks/create", element: <DeckCreate /> },
+          { path: "/decks/edit/:deck_id", element: <DeckEdit /> },
+          { path: "/rooms/new", element: <RoomCreate /> },
+          { path: "/study/:deck_id", element: <StudyView /> },
+          { path: "/study/summary/:deck_id", element: <StudySummary /> },
+          { path: "/rooms/results/:room_id", element: <GameResult /> }
+        ]
       },
       {
         path: "/discover",
@@ -59,14 +84,6 @@ const router = createBrowserRouter([
       {
         path: "/cards/:deck_id",
         element: <CardView />
-      },
-      {
-        path: "/study/:deck_id",
-        element: <StudyView />
-      },
-      {
-        path: "/study/summary/:deck_id",
-        element: <StudySummary />
       }
     ]
   }

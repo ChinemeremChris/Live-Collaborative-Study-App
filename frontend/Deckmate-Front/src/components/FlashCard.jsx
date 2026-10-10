@@ -5,9 +5,7 @@ export const FlashCard = ({ card, isFlipped, setIsFlipped, transitionDirection }
     const { card_id, deck_id, deck_name, card_term, card_definition, card_term_url, card_definition_url } = card
     const [imageOpen, setImageOpen] = useState(false)
     const [selectedImage, setSelectedImage] = useState(null)
-    useEffect(() => {
-        console.log("flash", card)
-    }, [])
+
     const HandleImageOpen = (e, image) => {
         e.stopPropagation()
         setImageOpen(true)

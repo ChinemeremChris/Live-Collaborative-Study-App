@@ -1,12 +1,12 @@
 import logging
 from fastapi import APIRouter, Depends, Query, Path, Body, Request, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 from app.users import current_active_user, current_optional_user, get_user_from_cookie
 from app.db import get_async_session, async_session_maker, User, Room, RoomParticipant, RoomQuestion, RoomQuestionChoice, RoomAnswer, Card, Deck
-from app.schemas import RoomOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut, RoomCard
+from app.schemas import RoomOut, RoomLobbyInfoOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut, RoomCard, CardOutNoDue, DeckEdit
 from typing import Annotated
 import uuid
 from datetime import datetime, timezone
@@ -19,9 +19,41 @@ import json
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.post("/")
+@router.get("/edit/{deck_id}")
+@limiter.limit("3/min")
+async def GetDeckForRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        deck_query = select(Deck).options(selectinload(Deck.child_cards), selectinload(Deck.deck_tag)).where(Deck.deck_id == deck_id)
+        deck_result = await session.execute(deck_query)
+        deck = deck_result.scalar_one_or_none()
+        if not deck:
+            raise HTTPException(status_code=404, detail="Deck not found")
+        cards = [
+            CardOutNoDue(
+                card_id=card.card_id,
+                deck_id=card.deck_id,
+                card_term=card.card_term,
+                card_definition=card.card_definition,
+                card_term_url=card.card_term_url,
+                card_definition_url=card.card_definition_url
+            )
+        for card in deck.child_cards]
+        return DeckEdit(
+            deck_id=deck.deck_id,
+            deck_name=deck.deck_name,
+            is_public=deck.is_public,
+            tags=[tag.tag_id for tag in deck.deck_tag],
+            cards=cards
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GetDeckForEdit error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get deck")
+
+@router.post("/{deck_id}")
 @limiter.limit("3/minute")
-async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], roomQA: Annotated[list[RoomCard], Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], interval: Annotated[int, Body()], roomQA: Annotated[list[RoomCard], Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
         deck_query = select(Deck).where(Deck.deck_id == deck_id)
         deck_result = await session.execute(deck_query)
@@ -41,7 +73,8 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], ro
         room = Room(
             host_id=user.id,
             deck_id=deck_id,
-            room_code=room_code
+            room_code=room_code,
+            interval=interval
         )
         session.add(room)
         await session.flush()
@@ -52,18 +85,19 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], ro
         cards = cards_result.scalars().all()
         card_dict = {card.card_id: card for card in cards}
         for index, question in enumerate(roomQA, 0):
-            other_answers = [{"definition": question.get("short_answer"), "definition_url": card_dict.get(question.get("card_id")).card_definition_url, "is_correct": False} for q in question]
+            other_answers = [{"definition": q.short_answer, "definition_url": card_dict.get(q.card_id).card_definition_url, "is_correct": False} for q in roomQA if (q.card_id != question.card_id and q.short_answer != question.short_answer)]
             distractors = random.sample(other_answers, min(len(other_answers), 3))
-            options = [{"definition": question.get("short_answer"), "definition_url": card_dict.get(question.get("card_id")).card_definition_url, "is_correct": True}] + distractors
+            options = [{"definition": question.short_answer, "definition_url": card_dict.get(question.card_id).card_definition_url, "is_correct": True}] + distractors
             random.shuffle(options)
             room_question = RoomQuestion(
                 room_id = room.room_id,
                 prompt = question.room_question,
-                prompt_url = card_dict.get(question.get("card_id")).card_term_url,
+                prompt_url = card_dict.get(question.card_id).card_term_url,
                 order_in_room = index
             )
             session.add(room_question)
             await session.flush()
+            await session.refresh(room_question)
             question_choices = [
                 RoomQuestionChoice(
                     room_question_id = room_question.room_question_id,
@@ -149,14 +183,43 @@ async def JoinRoom(request: Request, room_code: Annotated[str, Path()], user: Us
         )
         session.add(room_participant)
         await session.commit()
-        return {"message": "Successfully joined room"}
+        return {"room_id": room.room_id}
     except HTTPException:
         await session.rollback()
         raise
     except Exception as e:
         await session.rollback()
         logger.error(f"JoinRoom failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to allow user join room")    
+        raise HTTPException(status_code=500, detail="Failed to allow user to join room")
+
+@router.delete("/participants/{room_id}")
+@limiter.limit("5/minute")
+async def LeaveRoom(request: Request, room_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        participant_query = select(RoomParticipant).options(selectinload(RoomParticipant.room)).where(RoomParticipant.participant_id == user.id, RoomParticipant.room_id == room_id)
+        participant_result = await session.execute(participant_query)
+        participant = participant_result.scalar_one_or_none()
+        if not participant:
+            raise HTTPException(status_code=404, detail="Room with user is not found")
+        if participant.room.room_status != "Waiting":
+            raise HTTPException(status_code=403, detail="Cannot cleanly exit room when game has started or is already complete")
+        if participant.room.host_id == user.id:
+            await manager.broadcast(participant.room.room_code, {"type": "end_room", "message": "Host has deleted the room"})
+            await session.delete(participant.room)
+            await session.commit()
+            return {"message": "Room deleted"}
+        await session.delete(participant)
+        await session.commit()
+        
+        return {"message": "Successfully left room"}
+    except HTTPException:
+        await session.rollback()
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"LeaveRoom failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to allow user to leave room")
+    
 
 @router.get("/participants/me")
 @limiter.limit("10/minute")
@@ -186,9 +249,45 @@ async def GetMyRooms(request: Request, limit: Annotated[int, Query()] = 20, user
         await session.rollback()
         logger.error(f"GetMyRooms error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch rooms")
+
+@router.get("/info/{room_id}")
+@limiter.limit("10/minute")
+async def RoomLobbyInfo(request: Request, room_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        room_query = select(Room).options(selectinload(Room.participation).selectinload(RoomParticipant.participant), selectinload(Room.deck)).where(Room.room_id == room_id)
+        room_result = await session.execute(room_query)
+        room = room_result.scalar_one_or_none()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        num_questions_query = select(func.coalesce(func.count(RoomQuestion.room_question_id), 0).label("num_questions")).where(RoomQuestion.room_id == room_id)
+        num_questions_result = await session.execute(num_questions_query)
+        num_questions = num_questions_result.scalar_one()
+        player_list = [
+            {
+                "id": player.participant_id,
+                "name": f"{player.participant.fname} {player.participant.lname}"
+            }
+            for player in room.participation
+        ]
+        return RoomLobbyInfoOut(
+            room_id=room.room_id,
+            room_code=room.room_code,
+            room_status=room.room_status,
+            deck_name=room.deck.deck_name,
+            host_id=room.host_id,
+            interval=room.interval,
+            num_questions=num_questions,
+            participants=player_list
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"RoomLobbyInfo error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch room data")
+        
     
 @router.get("/{room_id}")
-@limiter.limit("5/minute")
+@limiter.limit("20/minute")
 async def GetRoomInfo(request: Request, room_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
         room_query = select(Room).options(selectinload(Room.deck), selectinload(Room.participation).selectinload(RoomParticipant.participant), selectinload(Room.room_question).selectinload(RoomQuestion.question_choices)).where(Room.room_id == room_id)
@@ -240,6 +339,7 @@ async def GetRoomInfo(request: Request, room_id: Annotated[uuid.UUID, Path()], u
         return RoomInfoOut(
             room_id=room.room_id,
             deck_name=room.deck.deck_name if room.deck else "Deleted Deck",
+            interval=room.interval,
             room_status=room.room_status,
             created_at=room.created_at,
             questions=room_questions,
@@ -250,10 +350,6 @@ async def GetRoomInfo(request: Request, room_id: Annotated[uuid.UUID, Path()], u
     except Exception as e:
         logger.error(f"GetRoomInfo error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading room info")
-
-            
-
-
     
 @router.delete("/{room_id}")
 @limiter.limit("10/minute")
@@ -266,6 +362,7 @@ async def DeleteRoom(request: Request, room_id: Annotated[uuid.UUID, Path()], us
             raise HTTPException(status_code=404, detail="Room not found")
         if room.host_id != user.id:
             raise HTTPException(status_code=403, detail="You do not have permission to delete this room")
+        await manager.broadcast(room.room_code, {"type": "end_room", "message": "Host has deleted the room"})
         await session.delete(room)
         await session.commit()
         return {"message": "Room successfully deleted"}
@@ -289,6 +386,12 @@ class ConnectionManager:
             self.active_connections[room_code] = {}
         if room_code not in self.disconnected_users:
             self.disconnected_users[room_code] = set()
+        if user_id in self.active_connections[room_code]:
+            old_ws = self.active_connections[room_code][user_id]
+            try:
+                await old_ws.close()
+            except Exception:
+                pass
         self.active_connections[room_code][user_id] = websocket
         if room_code not in self.room_states:
             self.room_states[room_code] = {
@@ -305,12 +408,14 @@ class ConnectionManager:
             }
         if self.room_states[room_code]["disconnect_cleanup"]:
             self.room_states[room_code]["disconnect_cleanup"].cancel()
+        player = None
         async with async_session_maker() as session:
             participant_query = select(RoomParticipant, Room).options(selectinload(RoomParticipant.participant)).outerjoin(RoomParticipant.room).where(RoomParticipant.participant_id == user_id, Room.room_code == room_code)
             participant_result = await session.execute(participant_query)
             player = participant_result.first()
         if not player:
             await self.send_personal_message(websocket, {"type": "error", "message": "Error connecting to the room"})
+            await websocket.close(code=4001)
             return
         if user_id in self.disconnected_users[room_code]:
             self.disconnected_users[room_code].remove(user_id)
@@ -323,10 +428,20 @@ class ConnectionManager:
                 })
                 return
         self.room_states[room_code]["scores"][str(user_id)] = {"score": 0, "name": f"{player.RoomParticipant.participant.fname} {player.RoomParticipant.participant.lname}"}
+        await self.broadcast(room_code, {"type": "player_join", "message": f"{player.RoomParticipant.participant.fname} {player.RoomParticipant.participant.lname} has joined"})
     
     async def disconnect(self, user_id, room_code, websocket: WebSocket):
         self.disconnected_users[room_code].add(user_id)
         self.active_connections[room_code].pop(user_id, None)
+
+        async with async_session_maker() as session:
+            room_query = select(Room).where(Room.room_code == room_code, Room.room_status == "Waiting", Room.host_id == user_id)
+            room_result = await session.execute(room_query)
+            room = room_result.scalar_one_or_none()
+            if room:
+                if not self.room_states[room_code]["disconnect_cleanup"]:
+                    self.room_states[room_code]["disconnect_cleanup"] = asyncio.create_task(self.host_disconnect_cleanup(room_code))
+                    return
         if len(self.active_connections[room_code].values()) <= 0:
             if not self.room_states[room_code]["disconnect_cleanup"]:
                 self.room_states[room_code]["disconnect_cleanup"] = asyncio.create_task(self.cleanup(room_code))
@@ -337,20 +452,50 @@ class ConnectionManager:
         except asyncio.CancelledError:
             return
         if room_code not in self.active_connections or len(self.active_connections[room_code].values()) <= 0:
+            async with async_session_maker() as session:
+                room_delete = delete(Room).where(Room.room_code == room_code, Room.room_status == "Waiting")
+                await session.execute(room_delete)
+                await session.commit()
             self.active_connections.pop(room_code, None)
             self.room_states.pop(room_code, None)
             self.disconnected_users.pop(room_code, None)
+
+    async def host_disconnect_cleanup(self, room_code):
+        try:
+            await asyncio.sleep(120)
+        except asyncio.CancelledError:
+            return
+        await self.broadcast(room_code, {
+            "type": "end_room",
+            "message": "Host disconnected — room in being closed"
+        })
+        async with async_session_maker() as session:
+            room_delete = delete(Room).where(Room.room_code == room_code, Room.room_status == "Waiting")
+            await session.execute(room_delete)
+            await session.commit()
+        self.active_connections.pop(room_code, None)
+        self.room_states.pop(room_code, None)
+        self.disconnected_users.pop(room_code, None)
         
 
     async def broadcast(self, room_code, message: dict):
         if room_code not in self.active_connections:
             return
+        dead_connections = []
+        for user_id, connection in self.active_connections[room_code].items():
+            try:
+                await connection.send_json(message)
+            except Exception:
+                dead_connections.append(user_id)
+        for user_id in dead_connections:
+            self.active_connections[room_code].pop(user_id, None)
 
-        for connection in self.active_connections[room_code].values():
-            await connection.send_json(message)
 
     async def send_personal_message(self, websocket: WebSocket, message: dict):
-        await websocket.send_json(message)
+        try:
+            await websocket.send_json(message)
+        except Exception:
+            pass
 
 manager = ConnectionManager()
 
@@ -386,14 +531,14 @@ async def EndGame(room_code):
                 participants = participants_result.scalars().all()
                 for p in participants:
                     p.score = scores_dict.get(str(p.participant_id), {}).get("score", 0)
-                    p.placement = f"{scores_dict.get(str(p.participant_id), {}).get('placement', '')}/{len(scores_list)}"
+                    p.placement = f"{scores_dict.get(str(p.participant_id), {}).get('placement', '--')}/{len(scores_list)}"
                 await session.flush()
             await session.commit()
+            await manager.broadcast(room_code, {"type": "end_game", "message": "Game ended", "scores": final_scores})
+            manager.room_states.pop(room_code, None)
     except Exception as e:
         logger.error(f"EndGame DB error: {e}", exc_info=True)
             
-    await manager.broadcast(room_code, {"type": "end_game", "message": "Game ended", "scores": final_scores})
-    manager.room_states.pop(room_code, None)
 
 async def NextQuestion(room_code, next_index):
     await asyncio.sleep(10)
@@ -402,11 +547,12 @@ async def NextQuestion(room_code, next_index):
     if manager.room_states[room_code]["current_index"] != next_index:
         return
     current_index = manager.room_states[room_code]["current_index"]
-    if current_index < len(manager.room_states[room_code]["questions"]) - 1:
+    if current_index <= len(manager.room_states[room_code]["questions"]) - 1:
         question_choices = [{"choice_id": str(choice.choice_id), "choice": choice.choice_text, "choice_url": choice.choice_url} for choice in manager.room_states[room_code]["questions"][current_index].question_choices]
         manager.room_states[room_code]["answered_users"][current_index] = set()
 
         await manager.broadcast(room_code, {"type": "question",
+                                            "current_index": current_index,
                                             "prompt": manager.room_states[room_code]["questions"][current_index].prompt,
                                             "prompt_url": manager.room_states[room_code]["questions"][current_index].prompt_url,
                                             "choices": question_choices,
@@ -452,8 +598,14 @@ async def WebsocketEndpoint(websocket: WebSocket, room_code: Annotated[str, Path
         while True:
             try:
                 data = await websocket.receive_json()
-                if data["type"] == "start":
-                    #data is {"type": "start", "interval": 60}
+                if data["type"] == "ping":
+                    await manager.send_personal_message(websocket, {
+                        "type": "pong",
+                        "server_time": int(time.time() * 1000),
+                        "client_time": data["client_time"]
+                    })
+                elif data["type"] == "start":
+                    #data is {"type": "start"}
                     room_query = select(Room).where(Room.room_code == room_code)
                     room_result = await session.execute(room_query)
                     room = room_result.scalar_one_or_none()
@@ -471,7 +623,7 @@ async def WebsocketEndpoint(websocket: WebSocket, room_code: Annotated[str, Path
                     room.room_status = "Active"
                     manager.room_states[room_code]["current_index"] = 0
                     manager.room_states[room_code]["status"] = "Active"
-                    manager.room_states[room_code]["interval"] = data["interval"]
+                    manager.room_states[room_code]["interval"] = room.interval
                     
 
                     room_question_query = select(RoomQuestion).options(selectinload(RoomQuestion.question_choices)).where(RoomQuestion.room_id == room.room_id).order_by(RoomQuestion.order_in_room)
@@ -489,12 +641,12 @@ async def WebsocketEndpoint(websocket: WebSocket, room_code: Annotated[str, Path
                                 manager.room_states[room_code]["answers"][rq.room_question_id] = choice.choice_id
                     
                     manager.room_states[room_code]["timer_task"] = asyncio.create_task(QuestionTimer(room_code, manager.room_states[room_code]["interval"], 0))
-                    await manager.broadcast(room_code, {"type": "notification", "message": "Game Started"})
 
                     question_choices = [{"choice_id": str(choice.choice_id), "choice": choice.choice_text, "choice_url": choice.choice_url} for choice in manager.room_states[room_code]["questions"][0].question_choices]
                     await session.commit()
                     manager.room_states[room_code]["answered_users"][0] = set()
                     await manager.broadcast(room_code, {"type": "question",
+                                                        "current_index": 0,
                                                         "prompt": manager.room_states[room_code]["questions"][0].prompt,
                                                         "prompt_url": manager.room_states[room_code]["questions"][0].prompt_url,
                                                         "choices": question_choices,
@@ -504,49 +656,73 @@ async def WebsocketEndpoint(websocket: WebSocket, room_code: Annotated[str, Path
                 #                           "question_index": index of question that user submits answer for
                 #                           }
                 elif data["type"] == "submit_answer":
-                    current_index = manager.room_states[room_code]["current_index"]
-                    if user.id in manager.room_states[room_code]["answered_users"][current_index]: #if user already answered
-                        continue
-                    submitted_for_index = data["question_index"]
-                    if submitted_for_index != current_index:
-                        continue
-                    manager.room_states[room_code]["answered_users"][current_index].add(user.id)
-                    user_answer_id = data["answer_choice_id"]
-                    room_question_id = manager.room_states[room_code]["questions"][current_index].room_question_id
-                    is_correct = user_answer_id == str(manager.room_states[room_code]["answers"][room_question_id])
-                    manager.room_states[room_code]["scores"][str(user.id)]["score"] = manager.room_states[room_code]["scores"][str(user.id)]["score"] + 1 if is_correct else manager.room_states[room_code]["scores"][str(user.id)]["score"]
-                    manager.room_states[room_code]["pending_answers"].append({
-                        "student_id": user.id,
-                        "room_question_id": manager.room_states[room_code]["questions"][current_index].room_question_id,
-                        "answer_id": user_answer_id,
-                        "is_correct": is_correct
-                    })
-                        
-                    if len(manager.room_states[room_code]["answered_users"][current_index]) >= len(manager.active_connections[room_code].values()):
-                        if manager.room_states[room_code]["timer_task"] and manager.room_states[room_code]["timer_task"].done() != True:
-                            manager.room_states[room_code]["timer_task"].cancel()
-                        asyncio.create_task(ShowRoundResults(room_code, current_index))
+                    try:
+                        current_index = manager.room_states[room_code]["current_index"]
+                        if user.id in manager.room_states[room_code]["answered_users"][current_index]: #if user already answered
+                            continue
+                        submitted_for_index = data["question_index"]
+                        if submitted_for_index != current_index:
+                            continue
+                        manager.room_states[room_code]["answered_users"][current_index].add(user.id)
+                        user_answer_id = data["answer_choice_id"]
+                        room_question_id = manager.room_states[room_code]["questions"][current_index].room_question_id
+                        is_correct = user_answer_id == str(manager.room_states[room_code]["answers"][room_question_id])
+                        manager.room_states[room_code]["scores"][str(user.id)]["score"] = manager.room_states[room_code]["scores"][str(user.id)]["score"] + 1 if is_correct else manager.room_states[room_code]["scores"][str(user.id)]["score"]
+                        manager.room_states[room_code]["pending_answers"].append({
+                            "student_id": user.id,
+                            "room_question_id": manager.room_states[room_code]["questions"][current_index].room_question_id,
+                            "answer_id": uuid.UUID(user_answer_id),
+                            "is_correct": is_correct
+                        })
+                        await manager.send_personal_message(websocket, message={"type": "answer_received", "user_answer_id": user_answer_id})
+                        await manager.broadcast(room_code, {"type": "answer_count", "num_answered": len(manager.room_states[room_code]["answered_users"][current_index])})
+                            
+                        if len(manager.room_states[room_code]["answered_users"][current_index]) >= len(manager.active_connections[room_code].values()):
+                            if manager.room_states[room_code]["timer_task"] and manager.room_states[room_code]["timer_task"].done() != True:
+                                manager.room_states[room_code]["timer_task"].cancel()
+                            asyncio.create_task(ShowRoundResults(room_code, current_index))
 
-                    if len(manager.room_states[room_code]["pending_answers"]) >= 50:
-                        try:    
-                            pending_answers = [RoomAnswer(
-                                student_id = pending.get("student_id"),
-                                room_question_id = pending.get("room_question_id"),
-                                answer_id = pending.get("answer_id"),
-                                is_correct = pending.get("is_correct")
-                            ) for pending in manager.room_states[room_code]["pending_answers"]]
-                            session.add_all(pending_answers)
-                            await session.commit()
-                            manager.room_states[room_code]["pending_answers"].clear()
-                        except Exception as e:
-                            await session.rollback()
-                            logger.error(f"Error committing pending answers to DB: {e}", exc_info=True)
+                        if len(manager.room_states[room_code]["pending_answers"]) >= 50:
+                            try:    
+                                pending_answers = [RoomAnswer(
+                                    student_id = pending.get("student_id"),
+                                    room_question_id = pending.get("room_question_id"),
+                                    answer_id = pending.get("answer_id"),
+                                    is_correct = pending.get("is_correct")
+                                ) for pending in manager.room_states[room_code]["pending_answers"]]
+                                session.add_all(pending_answers)
+                                await session.commit()
+                                manager.room_states[room_code]["pending_answers"].clear()
+                            except Exception as e:
+                                await session.rollback()
+                                logger.error(f"Error committing pending answers to DB: {e}", exc_info=True)
+                    except Exception as e:
+                        await session.rollback()
+                        await manager.send_personal_message(websocket, {"type": "answer_not_submitted"})
+                        logger.error(f"Error submitting answer: {e}", exc_info=True)
+                elif data["type"] == "end_early":
+                    room_query = select(Room).where(Room.room_code == room_code)
+                    room_result = await session.execute(room_query)
+                    room = room_result.scalar_one_or_none()
+
+                    if not room:
+                        await manager.send_personal_message(websocket, {"type": "error", "message": "Room does not exist"})
+                        continue
+                    if room.room_status != "Active":
+                        await manager.send_personal_message(websocket, {"type": "error", "message": "Room not in active mode"})
+                        continue
+                    if room.host_id != user.id:
+                        await manager.send_personal_message(websocket, {"type": "error", "message": "You are not the host of this room"})
+                        continue
+                    if manager.room_states[room_code]["timer_task"]:
+                        manager.room_states[room_code]["timer_task"].cancel()
+                    asyncio.create_task(EndGame(room_code))
             except json.JSONDecodeError:
                 await manager.send_personal_message(websocket, {"type": "error", "message": "Invalid JSON"})
                 continue
             except WebSocketDisconnect:
                 await manager.disconnect(user.id, room_code, websocket)
-                await manager.broadcast(room_code, {"type": "notification", "message": f"{user.fname} {user.lname} has left the room"})
+                await manager.broadcast(room_code, {"type": "player_leave", "message": f"{user.fname} {user.lname} has left the room"})
                 break
             except KeyError as e:
                 await manager.send_personal_message(websocket, {"type": "error", "message": f"Missing field: {e}"})

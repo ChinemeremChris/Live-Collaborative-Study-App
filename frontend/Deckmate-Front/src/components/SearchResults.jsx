@@ -71,8 +71,8 @@ export const SearchResults = () => {
             min_cards: min_cards, 
             max_cards: max_cards
         }),
-        staleTime: 1000 * 60 * 3,
-        gcTime: 1000 * 60 * 3,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 5,
         refetchOnWindowFocus: false,
         placeholderData: keepPreviousData
     })
@@ -118,7 +118,7 @@ export const SearchResults = () => {
                     <div className="mt-auto flex justify-between px-4 py-3 items-center">
                         <button onClick={() => setPage((prev) => prev - 1)} disabled={page <= 1} className={`text-sky-700 font-semibold p-2 rounded-3xl ${page <= 1 && 'text-slate-500'} ${page <= 1 ? 'hover:cursor-not-allowed' : 'hover:cursor-pointer'} ${page > 1 && 'hover:text-white'} ${page > 1 && 'hover:bg-sky-400'}`}>← Previous</button>
                         <div className="font-semibold">{`Page ${page}/${search_results?.num_pages ? search_results?.num_pages : 1}`}</div>
-                        <button onClick={() => setPage((prev) => prev + 1)} disabled={page >= search_results?.num_pages} className={`text-sky-700 font-semibold p-2 rounded-3xl ${page >= search_results?.num_pages &&  'text-slate-500'} ${page >= search_results?.num_pages ? 'hover:cursor-not-allowed' : 'hover:cursor-pointer'} ${page < search_results?.num_pages && 'hover:text-white'} ${page < search_results?.num_pages && 'hover:bg-sky-400'}`}>→ Next</button>
+                        <button onClick={() => setPage((prev) => prev + 1)} disabled={page >= search_results?.num_pages} className={`text-sky-700 font-semibold p-2 rounded-3xl ${page >= search_results?.num_pages &&  'text-slate-500'} ${page >= search_results?.num_pages ? 'hover:cursor-not-allowed' : 'hover:cursor-pointer'} ${page < search_results?.num_pages && 'hover:text-white'} ${page < search_results?.num_pages && 'hover:bg-sky-400'}`}>Next →</button>
                     </div>
             }
         </div>

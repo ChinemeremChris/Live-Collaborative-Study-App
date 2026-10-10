@@ -2,12 +2,13 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { UserPlus } from "lucide-react"
 import { useState } from "react"
 import toast from "react-hot-toast"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 export const Login = () =>{
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const navigate = useNavigate()
+    const location = useLocation()
 
     const HandleLogin = async ({ email, password }) => {
         try{
@@ -94,8 +95,8 @@ export const Login = () =>{
     } = useMutation({
         mutationFn: HandleLogin,
         onSuccess: () => {
-            console.log("success")
-            navigate("/", { replace: true })
+            const next = location.state?.next || "/"
+            navigate(next, { replace: true })
         },
         onError: (error) => {
             toast.error(error.message)

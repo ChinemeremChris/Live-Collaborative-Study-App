@@ -20,7 +20,6 @@ export const DeckCreate = () => {
             card.term?.trim() || card.definition?.trim()
         )
     }
-
     const navigate = useNavigate()
     const {user, userLoading} = useAuth()
     const initialized = useRef(false)
@@ -42,9 +41,21 @@ export const DeckCreate = () => {
             definition: '',
             term_img: null,
             definition_img: null
+        },
+        {
+            term: '',
+            definition: '',
+            term_img: null,
+            definition_img: null
+        },
+        {
+            term: '',
+            definition: '',
+            term_img: null,
+            definition_img: null
         }
     ])
-    const [allowDelete, setAllowDelete] = useState(cards?.length > 2)
+    const [allowDelete, setAllowDelete] = useState(cards?.length > 4)
 
     useEffect(() => {
         const savedTitle = localStorage.getItem('title')
@@ -219,18 +230,20 @@ export const DeckCreate = () => {
         createDeck()
     }
 
-    const UploadImageToS3 = async (imageFile) => {
-        if (!imageFile) return null
+    const GeneratePresignedURLs = async (files) => {
+        if (!files || files.length === 0) return {}
+        const imageFiles = files.map((imageFile) => ({
+            id: imageFile.id,
+            file_name: imageFile.file.name,
+            file_type: imageFile.file.type
+        }))
         const response = await fetch(`${import.meta.env.VITE_API_URL}/cards/image/upload/request`, {
             method: "POST",
             credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                file_name: imageFile.name,
-                file_type: imageFile.type
-            })
+            body: JSON.stringify(imageFiles)
         })
         if (!response.ok){
             const error = await response.json()
@@ -238,42 +251,62 @@ export const DeckCreate = () => {
                 const message = error.detail.map(e => e.msg).join(", ")
                 throw new Error(message)
             }
-            throw new Error (error.detail || "Error uploading image to server")
+            throw new Error (error.detail || "Error uploading images to server")
         }
-        const { presigned_url, permanent_url } = await response.json()
-
-        const uploadResponse = await fetch(presigned_url, {
-            method: "PUT",
-            headers: {
-                "Content-Type": imageFile.type
-            },
-            body: imageFile
+        const urlList = (await response.json()).urls
+        const urlDict = {}
+        urlList.forEach((item) => {
+            urlDict[item.id] = item
         })
-
-        if (!uploadResponse.ok){
-            throw new Error ("Failed to upload image to server")
-        }
-
-        return permanent_url
+        return urlDict
     }
 
     const SaveDeck = async () => {
-        const uploadedCards = await Promise.all(
-            cards.map(async (card, index) => {
-                const [termImageUrl, defintionImageUrl] = await Promise.all([
-                    UploadImageToS3(card.term_img),
-                    UploadImageToS3(card.definition_img)
-                ])
+        const images = []
+        cards.forEach((card, index) => {
+            if (card.term_img){
+                images.push({
+                    id: `${index}-term`,
+                    field: "card_term_url",
+                    file: card.term_img
+                })
+            }
+            if (card.definition_img){
+                images.push({
+                    id: `${index}-definition`,
+                    field: "card_definition_url",
+                    file: card.definition_img
+                })
+            }
+        })
+        const urls = images.length > 0 ? await GeneratePresignedURLs(images) : {}
+        await Promise.all(
+            images.map(async (image) => {
+                const uploadResponse = await fetch(urls[image.id].presigned_url, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": image.file.type
+                    },
+                    body: image.file
+                })
 
-                return {
-                    card_temp_id: index,
-                    card_term: card.term,
-                    card_definition: card.definition,
-                    card_term_url: termImageUrl,
-                    card_definition_url: defintionImageUrl
+                if (!uploadResponse.ok){
+                    throw new Error ("Failed to upload image to database")
                 }
             })
         )
+        const uploadedCards = cards.map((card, index) => ({
+            card_temp_id: index,
+            card_term: card.term,
+            card_definition: card.definition,
+            card_term_url: null,
+            card_definition_url: null
+        }))
+
+        images.forEach((image) => {
+            uploadedCards[Number(image.id.split('-', 1)[0])][image.field] = urls[image.id].permanent_url
+        })
+
         const response = await fetch(`${import.meta.env.VITE_API_URL}/decks/bulk`, {
             method: "POST",
             credentials: "include",
@@ -315,53 +348,46 @@ export const DeckCreate = () => {
 
     return (
         <div className="relative">
-            {
-                (!userLoading && user) ?   
-                    <div className="font-ibm bg-slate-50 flex flex-col gap-4 min-h-screen">
-                        <div className="sticky top-0 z-10 bg-white flex flex-col px-2 md:px-7 pt-2 pb-5 border-b border-b-slate-200 items-start gap-2 md:flex-row md:justify-between md:items-center">
-                            <div className="font-bold text-lg md:text-2xl lg:text-3xl">
-                                Create new deck of flashcards
-                            </div>
-                            <button onClick={ValidateFields} className="hover:cursor-pointer flex justify-center items-center bg-sky-700 font-semibold text-white md:text-lg lg:text-xl py-2 px-5 rounded-4xl">
-                                Create
-                            </button>
-                        </div>
-                        <div className="flex px-2 md:px-7 shrink-0">
-                            <DropdownOptions currentOption={currentOption} setCurrentOption={setCurrentOption} />
-                        </div>
-                        <div className="w-full flex justify-center px-2 md:px-7 shrink-0">
-                            <input type="text" value={title} placeholder="Enter a title for your deck" onChange={(e) => setTitle(e.target.value)} className="bg-white w-full p-3 text-lg lg:text-2xl rounded-lg font-semibold outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <div className="flex justify-between px-3 md:px-7 lg:text-lg shrink-0">
-                            <button onClick={() => setNotesModalOpen(true)} className="flex gap-1 items-center font-semibold text-white bg-sky-700 p-3 rounded-3xl hover:cursor-pointer">
-                                <Plus />
-                                <span>Convert Notes</span>
-                            </button>
-                            <button type="button" onClick={() => setTagModalOpen(true)} className="flex justify-center items-center gap-1 rounded-full px-3 bg-sky-700 text-white font-semibold hover:cursor-pointer">
-                                <Plus />
-                                <span>Tags</span>
-                            </button>
-                            <TagModal tagSet={tagSet} setTagSet={setTagSet} tagModalOpen={tagModalOpen} setTagModalOpen={setTagModalOpen} />
-                            <DraftModal draftModalOpen={draftModalOpen} HandleDiscardDraft={HandleDiscardDraft} HandleLoadDraft={HandleLoadDraft} />
-                        </div>
-                        <div className="flex flex-col gap-3 w-full p-2 md:px-7 flex-1 min-h-0">
-                            {
-                                cards.map((card, index) => (
-                                    <CreateCard key={index} index={index} term={card.term} definition={card.definition} term_image={card.term_img} definition_image={card.definition_img} allowDelete={allowDelete} handleImageDelete={handleImageDelete} handleChangeImage={handleChangeImage} handleTextChange={handleTextChange} handleDeleteCard={handleDeleteCard} />
-                                ))
-                            }
-                        </div>
-                        <div className="flex justify-center px-6 py-3 md:px-7 shrink-0" onClick={handleAddCard}>
-                            <button className="hover:cursor-pointer w-full md:w-3/4 lg:w-1/2 p-2 rounded-3xl md:text-xl lg:text-2xl bg-sky-700 text-white font-semibold">
-                                Add Card
-                            </button>
-                        </div>
+            <div className="font-ibm bg-slate-50 flex flex-col gap-4 min-h-screen">
+                <div className="sticky top-0 z-10 bg-white flex flex-col px-2 md:px-7 pt-2 pb-5 border-b border-b-slate-200 items-start gap-2 md:flex-row md:justify-between md:items-center">
+                    <div className="font-bold text-lg md:text-2xl lg:text-3xl">
+                        Create new deck of flashcards
                     </div>
-                :
-                    <div className="flex justify-center">
-                            Login or signup to continue
-                    </div>
-            }
+                    <button onClick={ValidateFields} className="hover:cursor-pointer flex justify-center items-center bg-sky-700 font-semibold text-white md:text-lg lg:text-xl py-2 px-5 rounded-4xl">
+                        Create
+                    </button>
+                </div>
+                <div className="flex px-2 md:px-7 shrink-0">
+                    <DropdownOptions currentOption={currentOption} setCurrentOption={setCurrentOption} />
+                </div>
+                <div className="w-full flex justify-center px-2 md:px-7 shrink-0">
+                    <input type="text" value={title} placeholder="Enter a title for your deck" onChange={(e) => setTitle(e.target.value)} className="bg-white w-full p-3 text-lg lg:text-2xl rounded-lg font-semibold outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex justify-between px-3 md:px-7 lg:text-lg shrink-0">
+                    <button onClick={() => setNotesModalOpen(true)} className="flex gap-1 items-center font-semibold text-white bg-sky-700 p-3 rounded-3xl hover:cursor-pointer">
+                        <Plus />
+                        <span>Convert Notes</span>
+                    </button>
+                    <button type="button" onClick={() => setTagModalOpen(true)} className="flex justify-center items-center gap-1 rounded-full px-3 bg-sky-700 text-white font-semibold hover:cursor-pointer">
+                        <Plus />
+                        <span>Tags</span>
+                    </button>
+                    <TagModal tagSet={tagSet} setTagSet={setTagSet} tagModalOpen={tagModalOpen} setTagModalOpen={setTagModalOpen} />
+                    <DraftModal draftModalOpen={draftModalOpen} HandleDiscardDraft={HandleDiscardDraft} HandleLoadDraft={HandleLoadDraft} />
+                </div>
+                <div className="flex flex-col gap-3 w-full p-2 md:px-7 flex-1 min-h-0">
+                    {
+                        cards.map((card, index) => (
+                            <CreateCard key={index} index={index} term={card.term} definition={card.definition} term_image={card.term_img} definition_image={card.definition_img} allowDelete={allowDelete} handleImageDelete={handleImageDelete} handleChangeImage={handleChangeImage} handleTextChange={handleTextChange} handleDeleteCard={handleDeleteCard} />
+                        ))
+                    }
+                </div>
+                <div className="flex justify-center px-6 py-3 md:px-7 shrink-0" onClick={handleAddCard}>
+                    <button className="hover:cursor-pointer w-full md:w-3/4 lg:w-1/2 p-2 rounded-3xl md:text-xl lg:text-2xl bg-sky-700 text-white font-semibold">
+                        Add Card
+                    </button>
+                </div>
+            </div>
             <NotesModal setCards={setCards} notesModalOpen={notesModalOpen} setNotesModalOpen={setNotesModalOpen} />
         </div>
     )

@@ -16,13 +16,21 @@ router = APIRouter()
 
 @router.post("/image/upload/request")
 @limiter.limit("50/minute")
-async def RequestImageUpload(request: Request, image_obj: Annotated[ImageUploadRequest, Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def RequestImageUpload(request: Request, image_list: Annotated[list[ImageUploadRequest], Body()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
         allowed_types = ["image/jpeg", "image/png", "image/webp"]
-        if image_obj.file_type not in allowed_types:
-            raise HTTPException(status_code=400, detail="File type not allowed")
-        url_dict = generate_upload_url(image_obj.file_name, image_obj.file_type)
-        return url_dict
+        for image_obj in image_list:
+            if image_obj.file_type not in allowed_types:
+                raise HTTPException(status_code=400, detail=f"{image_obj.file_name} file type not allowed")
+        url_list = []
+        for image_obj in image_list:
+            url_dict = generate_upload_url(image_obj.file_name, image_obj.file_type)
+            url_list.append({
+                "id": image_obj.id,
+                "presigned_url": url_dict["presigned_url"],
+                "permanent_url": url_dict["permanent_url"]
+            })
+        return {"urls": url_list}
     except HTTPException:
         raise
     except Exception as e:

@@ -6,7 +6,7 @@ from sqlalchemy import select, delete, func, or_, and_, text
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_async_session, User, Deck, Tag, Deck_Tag, DeckRating, Card, CardProgress, StudySession, CardReview
-from app.schemas import DeckSearch, DeckSearchSuggestion, MyDeckOut, CardOutNoDue, DeckWithCardsOut, DeckIn, DeckCreate, DeckCreateOut, DeckUpdate, BulkDeckUpdateOut
+from app.schemas import DeckEdit, DeckSearch, DeckSearchSuggestion, MyDeckOut, CardOutNoDue, DeckWithCardsOut, DeckIn, DeckCreate, DeckCreateOut, DeckUpdate, BulkDeckUpdateOut
 from app.services.s3 import batch_delete_image, delete_image
 import uuid
 from app.limiter import limiter
@@ -142,7 +142,8 @@ async def SearchForDeck(request: Request, search_term: Annotated[str|None, Query
             creator_name = deck_creator_name,
             card_count = row.num_cards,
             avg_rating = row.average_rating or 0,
-            rating_count = row.num_ratings or 0
+            rating_count = row.num_ratings or 0,
+            created_at = row.Deck.created_at.date()
         ))
 
     return {
@@ -321,6 +322,42 @@ async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
     )
 
     return deck_return
+
+@router.get("/edit/{deck_id}")
+@limiter.limit("3/min")
+async def GetDeckForEdit(request: Request, deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        deck_query = select(Deck).options(selectinload(Deck.child_cards), selectinload(Deck.deck_tag)).where(Deck.deck_id == deck_id)
+        deck_result = await session.execute(deck_query)
+        deck = deck_result.scalar_one_or_none()
+        if not deck:
+            raise HTTPException(status_code=404, detail="Deck not found")
+        if deck.creator_id != user.id:
+            raise HTTPException(status_code=403, detail="You do not own this deck")
+        cards = [
+            CardOutNoDue(
+                card_id=card.card_id,
+                deck_id=card.deck_id,
+                card_term=card.card_term,
+                card_definition=card.card_definition,
+                card_term_url=card.card_term_url,
+                card_definition_url=card.card_definition_url
+            )
+        for card in deck.child_cards]
+        return DeckEdit(
+            deck_id=deck.deck_id,
+            deck_name=deck.deck_name,
+            is_public=deck.is_public,
+            tags=[tag.tag_id for tag in deck.deck_tag],
+            cards=cards
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GetDeckForEdit error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get deck")
+
+
 
 @router.post("/")
 @limiter.limit("2/minute")
@@ -552,7 +589,7 @@ async def BulkUpdate(deck_id: Annotated[uuid.UUID, Path()], updated_data: Annota
         ]
         
         #delete cards
-        delete_card_query = select(Card).where(Card.deck_id == deck_id, Card.card_id.in_([uuid.UUID(card_uuid) for card_uuid in updated_data.deleted_cards]))
+        delete_card_query = select(Card).where(Card.deck_id == deck_id, Card.card_id.in_(updated_data.deleted_cards))
         delete_result = await session.execute(delete_card_query)
         cards_to_be_deleted = delete_result.scalars().all()
         

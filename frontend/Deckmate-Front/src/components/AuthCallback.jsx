@@ -8,11 +8,12 @@ import { PageSpinner } from "./PageSpinner"
 export const AuthCallback = () => {
     const queryClient = useQueryClient()
     const navigate = useNavigate()
-    const { search } = useLocation()
+    // const { search } = useLocation()
+    const location = useLocation()
     const { user } = useAuth()
     const ran = useRef(false)
     const FinishOAuth = async () => {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/google/callback${search}`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/google/callback${location?.search}`, {
             method: "GET",
             credentials: "include",
         })
@@ -27,6 +28,8 @@ export const AuthCallback = () => {
     } = useMutation({
         mutationFn: FinishOAuth,
         onSuccess: async () => {
+            const next = location.state?.next || "/"
+            navigate(next, { replace: true })
             await queryClient.refetchQueries({ queryKey: ["user"]})
         },
         onError: (error) => {

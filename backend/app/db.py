@@ -141,13 +141,14 @@ class Room(Base):
     host_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), index=True)
     deck_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deck.deck_id", ondelete="SET NULL"), nullable=True, index=True) #make nullable?
     room_code: Mapped[str] = mapped_column(String(6), unique=True)
+    interval: Mapped[int] = mapped_column(Integer, default=60)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc))
     room_status: Mapped[str] = mapped_column(String(20), default="Waiting")
 
     host: Mapped["User"] = relationship(back_populates="rooms_hosted")
     deck: Mapped["Deck"] = relationship(back_populates="rooms_studied")
-    participation: Mapped[list["RoomParticipant"]] = relationship(back_populates="room")
-    room_question: Mapped[list["RoomQuestion"]] = relationship(back_populates="host_room")
+    participation: Mapped[list["RoomParticipant"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+    room_question: Mapped[list["RoomQuestion"]] = relationship(back_populates="host_room", cascade="all, delete-orphan")
 
 
 class RoomParticipant(Base):

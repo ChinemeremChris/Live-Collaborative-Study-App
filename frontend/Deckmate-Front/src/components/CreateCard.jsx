@@ -13,6 +13,11 @@ export const CreateCard = ({ index, handleImageDelete, handleChangeImage, handle
             return
         }
 
+        if (typeof term_image === "string"){
+            setTermImageUrl(term_image)
+            return
+        }
+
         const url = URL.createObjectURL(term_image)
         setTermImageUrl(url)
 
@@ -24,6 +29,11 @@ export const CreateCard = ({ index, handleImageDelete, handleChangeImage, handle
     useEffect(() => {
         if (!definition_image) {
             setDefinitionImageUrl(null)
+            return
+        }
+
+        if (typeof definition_image === "string"){
+            setDefinitionImageUrl(definition_image)
             return
         }
 
@@ -92,7 +102,7 @@ export const CreateCard = ({ index, handleImageDelete, handleChangeImage, handle
                             {
                                 definitionImageUrl ? 
                                     <div className="hover:cursor-pointer relative w-full h-full">
-                                        <X onClick={(e) => handleImageDelete(e, index, 'definition_img')} className="bg-red-500 w-6 h-6 absolute right-0 top-0 z-10 text-white rounded-full p-1 hover:cursor-pointer" />
+                                        <X onClick={(e) => handleImageDelete(e, index, 'definition_img')} className="bg-red-500 w-6 h-6 absolute right-0 top-0 z-2 text-white rounded-full p-1 hover:cursor-pointer" />
                                         <img src={definitionImageUrl} className="w-full h-full object-cover" />
                                     </div>
                                 :

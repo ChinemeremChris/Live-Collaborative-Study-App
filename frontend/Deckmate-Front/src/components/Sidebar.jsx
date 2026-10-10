@@ -1,4 +1,4 @@
-import { Home, Layers, Menu, Search, X, RotateCcwIcon, Trophy, LogIn, UserPlus, Plus, Gamepad2, Settings } from "lucide-react"
+import { Home, Layers, Menu, Search, X, RotateCcwIcon, Trophy, LogIn, UserPlus, Plus, Gamepad2, Settings, Group, Users } from "lucide-react"
 import { useState } from "react"
 import { useAuth } from "../contexts/UserContext"
 import { useNavigate } from "react-router-dom"
@@ -9,6 +9,12 @@ export const Sidebar = () => {
     const navigate = useNavigate()
     const openOverlay = "pointer-events-auto opacity-10"
     const closeOverlay = "pointer-events-none opacity-0"
+
+    const HandleButtonClick = (link) => {
+        setIsOpen(false)
+        navigate(link)
+    }
+
     return (
         <div>
             <button className="cursor-pointer" onClick={() => setIsOpen((prev) => !prev)}>
@@ -24,7 +30,7 @@ export const Sidebar = () => {
                 </div>
                 {/*home and discover*/}
                 <div className="flex flex-col gap-5.5 py-4 border-b border-slate-100">
-                    <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4" onClick={() => navigate(`/`)}>
+                    <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4" onClick={() => HandleButtonClick(`/`)}>
                         <Home />
                         <div>Home</div>
                     </div>
@@ -37,14 +43,18 @@ export const Sidebar = () => {
                 {
                     (!isLoading && user) && (
                         <div className="flex flex-col gap-5.5 py-4 border-b border-slate-100">
-                            <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                            <button type="button" onClick={() => HandleButtonClick('/decks/create')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                 <Plus />
                                 <div>Create Deck</div>
-                            </div>
-                            <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                            </button>
+                            <button type="button" onClick={() => HandleButtonClick('/rooms/new')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                 <Gamepad2 />
                                 <div>Start Room</div>
-                            </div>
+                            </button>
+                            <button type="button" onClick={() => HandleButtonClick('/rooms/join')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                <Users />
+                                <div>Join Room</div>
+                            </button>
                         </div>
                     )
                 }

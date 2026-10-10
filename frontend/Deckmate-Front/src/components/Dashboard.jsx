@@ -133,7 +133,7 @@ export const Dashboard = () => {
                 <div className="flex flex-col lg:gap-2">
                     <div className="text-2xl md:text-4xl lg:text-5xl font-bold">{`${Greeting()}, ${user.fname}`}</div>
                     <div className="text-sm md:text-lg lg:text-xl text-gray-600">
-                        {`${stats.num_cards_due} ${stats.num_cards_due !== 1 ? 'cards' : 'card'} due today across ${due_decks?.length} ${due_decks?.length !== 1 ? 'decks' : 'deck'}`}
+                        {`${stats?.num_cards_due} ${stats?.num_cards_due !== 1 ? 'cards' : 'card'} due today across ${due_decks?.length} ${due_decks?.length !== 1 ? 'decks' : 'deck'}`}
                     </div>
                 </div>
             }
@@ -149,10 +149,10 @@ export const Dashboard = () => {
                 <div className="grid grid-cols-[3fr_2fr] sm:grid-cols-[4fr_2fr_2fr_2fr] gap-4">
                     <div className="flex flex-col bg-white p-3 sm:py-4 sm:px-6 rounded-xl">
                         <div className="text-xs sm:text-base font-semibold text-gray-600">Study Streak</div>
-                        <div className="font-semibold sm:text-lg">{`${stats.study_streak} ${stats.study_streak !== 1 ? 'days': 'day'}`}</div>
+                        <div className="font-semibold sm:text-lg">{`${stats?.study_streak} ${stats?.study_streak !== 1 ? 'days': 'day'}`}</div>
                         <div className="flex gap-1">
                             {
-                                stats.study_week_list.map((studied, index) => (
+                                stats?.study_week_list.map((studied, index) => (
                                     <div key={index} className={`h-5 flex-1 rounded-sm ${studied ? 'bg-sky-800': 'bg-slate-200'} ${index === (new Date).getDay() ? 'outline-2 outline-sky-400 outline-offset-1' : ''}`}/>
                                 ))
                             }
@@ -160,18 +160,18 @@ export const Dashboard = () => {
                     </div>
                     <div className="flex flex-col bg-white p-3 sm:px-4 rounded-xl">
                         <div className="text-xs sm:text-base font-semibold text-gray-600">Cards studied</div>
-                        <div className="font-semibold sm:text-lg">{`${stats.week_cards_studied}`}</div>
+                        <div className="font-semibold sm:text-lg">{`${stats?.week_cards_studied}`}</div>
                         <div className="text-xs sm:text-base font-semibold text-gray-600">this week</div>
                     </div>
                     <div className="flex flex-col bg-white p-3 rounded-xl">
                         <div className="text-xs sm:text-base font-semibold text-gray-600">My decks</div>
-                        <div className="font-semibold sm:text-lg">{`${stats.num_decks}`}</div>
-                        <div className="text-xs sm:text-base font-semibold text-gray-600">{`${stats.public_decks} public`}</div>
+                        <div className="font-semibold sm:text-lg">{`${stats?.num_decks}`}</div>
+                        <div className="text-xs sm:text-base font-semibold text-gray-600">{`${stats?.public_decks} public`}</div>
                     </div>
                     <div className="flex flex-col bg-white p-3 rounded-xl">
                         <div className="text-xs sm:text-base font-semibold text-gray-600">Rooms Played</div>
-                        <div className="font-semibold sm:text-lg">{`${stats.rooms_played}`}</div>
-                        <div className="text-xs sm:text-base font-semibold text-gray-600">{`${stats.rooms_won} won`}</div>
+                        <div className="font-semibold sm:text-lg">{`${stats?.rooms_played}`}</div>
+                        <div className="text-xs sm:text-base font-semibold text-gray-600">{`${stats?.rooms_won} won`}</div>
                     </div>
                 </div>
             }
@@ -224,7 +224,7 @@ export const Dashboard = () => {
                         {studySessions?.length > 0 ?
                             <div className="flex flex-col gap-2">
                                 {
-                                    studySessions.map((session) => (
+                                    studySessions?.map((session) => (
                                         <DashSession key={session.session_id} card_title={session.deck_name} session_date={session.started_at} num_cards_studied={session.cards_studied} />
                                     ))
                                 }
@@ -251,8 +251,8 @@ export const Dashboard = () => {
                         {rooms?.length > 0 ?
                             <div className="flex flex-col gap-2">
                                 {
-                                    studySessions.map((room) => (
-                                        <DashRoom key={room.room_code} room_code={room.deck_name} position={room.placement} room_status={room_status} />
+                                    studySessions?.map((room) => (
+                                        <DashRoom key={room.room_code} room_code={room.deck_name} position={room.placement} room_status={room.room_status} />
                                     ))
                                 }
                             </div>

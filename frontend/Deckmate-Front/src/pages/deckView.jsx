@@ -178,7 +178,7 @@ export const DeckView = () => {
                                         </button>
                                         {
                                             (!userLoading && user) &&
-                                                <button type="button" className="flex gap-0.5 items-center bg-sky-500 text-white rounded-md py-1 px-2 hover:cursor-pointer">
+                                                <button type="button" onClick={() => navigate(`/rooms/new?deck_id=${deck_id}`)} className="flex gap-0.5 items-center bg-sky-500 text-white rounded-md py-1 px-2 hover:cursor-pointer">
                                                     <Gamepad2 className="w-4 h-4" />
                                                     <div>{`Create Room`}</div>
                                                 </button>
@@ -287,11 +287,11 @@ export const DeckView = () => {
                                             (!userLoading && user && deck?.creator_id === user?.id) && 
                                                 <div>
                                                     <div className="flex justify-between text-base font-semibold text-white border-b border-slate-300 pb-4">
-                                                        <button className="flex bg-blue-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
+                                                        <button onClick={() => navigate(`/decks/edit/${deck_id}`)} className="hover:cursor-pointer flex bg-blue-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
                                                             <SquarePen className="w-4 h-4"/>
                                                             <div>Edit</div>
                                                         </button>
-                                                        <button onClick={() => setDeleteModalOpen(true)} className="flex bg-red-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
+                                                        <button onClick={() => setDeleteModalOpen(true)} className="hover:cursor-pointer flex bg-red-500 rounded-xl py-2 px-8 md:px-4 lg:px-10 gap-1 justify-center items-center">
                                                             <Trash2 className="w-4 h-4"/>
                                                             <div>Delete</div>
                                                         </button>

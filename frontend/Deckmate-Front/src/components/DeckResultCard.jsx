@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom"
 
 export const DeckResultCard = ({ deck }) => {
     const navigate = useNavigate()
-    const {deck_id, deck_name, creator_name, card_count, avg_rating, rating_count} = deck
+    const { deck_id, deck_name, creator_name, card_count, avg_rating, rating_count, created_at } = deck
 
     return (
         <div className={`flex flex-col w-11/12 h-52 gap-3 border border-slate-100 rounded-2xl shadow-lg hover:cursor-pointer transition-transform ease-in-out duration-200 hover:scale-105`} onClick={() => navigate(`/decks/${deck_id}`)}>

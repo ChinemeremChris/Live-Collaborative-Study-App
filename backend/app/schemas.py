@@ -45,7 +45,7 @@ class DeckUpdate(BaseModel):
     tags: list[str]
     updated_cards: list["CardUpdateID"]
     new_cards: list["CardCreate"]
-    deleted_cards: list[str]
+    deleted_cards: list[uuid.UUID]
 
 class DeckCreateOut(BaseModel):
     deck_id: uuid.UUID
@@ -60,6 +60,7 @@ class DeckSearch(BaseModel):
     card_count: int
     avg_rating: float | None
     rating_count: int
+    created_at: date
 
 class DeckSearchSuggestion(BaseModel):
     deck_id: uuid.UUID
@@ -105,6 +106,13 @@ class DeckWithCardsOut(BaseModel):
     last_session: date | None
     cards_reviewed: int | None
     first_review_date: date | None
+
+class DeckEdit(BaseModel):
+    deck_id: uuid.UUID
+    deck_name: str
+    is_public: bool
+    tags: list[uuid.UUID]
+    cards: list["CardOutNoDue"]
 
 
 class BulkDeckUpdateOut(BaseModel):
@@ -162,9 +170,10 @@ class CardOutDeckNameNoDue(BaseModel):
     card_definition_url: Optional[str] = None
 
 class ImageUploadRequest(BaseModel):
+    id: str
     file_name: str
     file_type: str
- 
+
 #StudySession input is just deck_id
 
 class StudySessionOut(BaseModel):
@@ -253,10 +262,18 @@ class RoomQAOut(BaseModel):
 class RoomInfoOut(BaseModel):
     room_id: uuid.UUID
     deck_name: str
+    interval: int
     room_status: str
     created_at: datetime
     questions: list["RoomQAOut"]
     scores: list[dict]
 
-
-    
+class RoomLobbyInfoOut(BaseModel):
+    room_id: uuid.UUID
+    room_code: str
+    room_status: str
+    deck_name: str
+    host_id: uuid.UUID
+    interval: int
+    num_questions: int
+    participants: list[dict]
