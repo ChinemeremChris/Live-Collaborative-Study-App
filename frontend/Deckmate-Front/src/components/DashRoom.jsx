@@ -8,7 +8,7 @@ export const DashRoom = ({ card_title, room_code, position, room_status }) => {
                     <Trophy size={14} color="white"/>
                 </div>
                 <div className="flex flex-col">
-                    <div className="text-sm font-semibold">{card_title}</div>
+                    <div className="text-xs font-semibold">{card_title}</div>
                     <div className="flex text-xs text-slate-600 gap-1">
                         <div>{room_code}</div>
                         <div>•</div>

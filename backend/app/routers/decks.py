@@ -297,6 +297,10 @@ async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
         ))
     tag_list =  [{"tag_id": deck_tag.tag.tag_id, "tag_name": deck_tag.tag.tag_name} for deck_tag in row.Deck.deck_tag]
 
+    print(datetime.now())           # local time
+    print(datetime.now(timezone.utc))  # UTC time
+    print(date.today()) 
+
     deck_return = DeckWithCardsOut(
         deck_id = row.Deck.deck_id,
         deck_name = row.Deck.deck_name,
@@ -305,7 +309,7 @@ async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
         creator_deck_count = creator_deck_count,
         is_public = row.Deck.is_public,
         created_at = row.Deck.created_at,
-        updated_at = row.Deck.updated_at.date(),
+        updated_at = row.Deck.updated_at,
         card_count = card_count,
         preview_cards = cards,
         tags = tag_list,

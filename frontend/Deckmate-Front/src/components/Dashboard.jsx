@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Plus, Search } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 export const Dashboard = () => {
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
     const navigate = useNavigate()
     const { user } = useAuth()
 
@@ -24,6 +25,7 @@ export const Dashboard = () => {
             method: "GET",
             credentials: "include",
             headers: {
+                "X-User-Timezone": userTimezone,
                 "Content-Type": "application/json"
             }
         })
@@ -251,8 +253,8 @@ export const Dashboard = () => {
                         {rooms?.length > 0 ?
                             <div className="flex flex-col gap-2">
                                 {
-                                    studySessions?.map((room) => (
-                                        <DashRoom key={room.room_code} room_code={room.deck_name} position={room.placement} room_status={room.room_status} />
+                                    rooms?.map((room) => (
+                                        <DashRoom key={room.room_code} card_title={room.deck_name} room_code={room.room_code} position={room.placement} room_status={room.room_status} />
                                     ))
                                 }
                             </div>

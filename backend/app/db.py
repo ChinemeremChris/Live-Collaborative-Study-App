@@ -44,8 +44,8 @@ class Deck(Base):
     deck_name: Mapped[str] = mapped_column(String(250))
     creator_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), index=True)
     is_public: Mapped[bool] = mapped_column(default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     deck_creator: Mapped["User"] = relationship(back_populates="decks")
     child_cards: Mapped[list["Card"]] = relationship(back_populates="parent_deck", cascade="all, delete-orphan")
@@ -59,7 +59,7 @@ class DeckRating(Base):
     deck_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deck.deck_id", ondelete="CASCADE"), primary_key=True, index=True)
     rater_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), primary_key=True, index=True)
     rating: Mapped[int] = mapped_column()
-    rated_at: Mapped[datetime] = mapped_column(default=datetime.now(timezone.utc))
+    rated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     deck: Mapped["Deck"] = relationship(back_populates="deck_rating")
     rater: Mapped["User"] = relationship(back_populates="deck_rating")
@@ -99,8 +99,8 @@ class StudySession(Base):
     deck_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deck.deck_id", ondelete="CASCADE"), index=True)
     cards_due: Mapped[int] = mapped_column(default=0)
     cards_studied: Mapped[int] = mapped_column(default=0)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     completed_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
     student: Mapped["User"] = relationship(back_populates="session")
@@ -114,9 +114,9 @@ class CardProgress(Base):
     card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("card.card_id", ondelete="CASCADE"), index=True)
     ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
     current_interval: Mapped[int] = mapped_column(default=1)
-    next_review_date: Mapped[date|None] = mapped_column(Date, default=date.today(), index=True)
+    next_review_date: Mapped[date|None] = mapped_column(Date, default=date.today, index=True)
     times_reviewed: Mapped[int] = mapped_column(default=0)
-    last_review_date: Mapped[date|None] = mapped_column(Date, default=date.today(), index=True)
+    last_review_date: Mapped[date|None] = mapped_column(Date, default=date.today, index=True)
     last_rating: Mapped[str|None] = mapped_column(String(6), nullable=True)
 
     student: Mapped["User"] = relationship(back_populates="card_progress")
@@ -129,7 +129,7 @@ class CardReview(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("study_session.session_id", ondelete="CASCADE"), index=True)
     card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("card.card_id"), index=True)
     rating: Mapped[str|None] = mapped_column(String(6), nullable=True)
-    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), index=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     review_session: Mapped["StudySession"] = relationship(back_populates="card_reviews")
     card_student: Mapped["User"] = relationship(back_populates="student_review")
@@ -142,7 +142,7 @@ class Room(Base):
     deck_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deck.deck_id", ondelete="SET NULL"), nullable=True, index=True) #make nullable?
     room_code: Mapped[str] = mapped_column(String(6), unique=True)
     interval: Mapped[int] = mapped_column(Integer, default=60)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     room_status: Mapped[str] = mapped_column(String(20), default="Waiting")
 
     host: Mapped["User"] = relationship(back_populates="rooms_hosted")

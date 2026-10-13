@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 from typing import Annotated
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
+from zoneinfo import ZoneInfo
+from app.timezone import get_user_timezone
 
 
 logger = logging.getLogger(__name__)
@@ -43,36 +45,43 @@ async def CompleteOauthProfile(request: Request, user_data: Annotated[UserUpdate
 
 @router.get("/stats")
 @limiter.limit("10/min")
-async def GetStats (request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    study_sessions_query = select(func.date(StudySession.started_at).label("study_date")).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0).order_by(func.date(StudySession.started_at).desc())
+async def GetStats (request: Request, tz: ZoneInfo = Depends(get_user_timezone), user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    today = datetime.now(timezone.utc).astimezone(tz).date()
+    utc_offset = datetime.now(tz).utcoffset()
+    total_seconds = int(utc_offset.total_seconds())
+    hours, remainder = divmod(abs(total_seconds), 3600)
+    minutes = remainder // 60
+    sign = '+' if total_seconds >= 0 else '-'
+    offset_str = f"{sign}{hours:02d}:{minutes:02d}"
+    local_date_expr = func.date(func.convert_tz(StudySession.started_at, '+00:00', offset_str))
+
+    week_day = (today.weekday() + 1) % 7
+    week_start = today - timedelta(days=week_day)
+    next_week_start = week_start + timedelta(days=7)
+    week_start_dt = datetime(week_start.year, week_start.month, week_start.day, tzinfo=tz).astimezone(timezone.utc)
+    next_week_start_dt = datetime(next_week_start.year, next_week_start.month, next_week_start.day, tzinfo=tz).astimezone(timezone.utc)
+
+    study_sessions_query = select(local_date_expr.label("study_date")).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0).order_by(local_date_expr.desc())
     study_sessions_result = await session.execute(study_sessions_query)
     study_sessions = study_sessions_result.scalars().all()
     study_sessions = [d if isinstance(d, date) else date.fromisoformat(str(d)) for d in study_sessions]
     print(study_sessions)
     streak = 0
-    today = date.today()
-    if not study_sessions or study_sessions[0] != today:
-        streak = 0
-    else:
+    if study_sessions and today - timedelta(days=1) <= study_sessions[0] <= today:
         streak = 1
         while streak < len(study_sessions):
-            if today - timedelta(days=streak) == study_sessions[streak]:
+            if study_sessions[0] - timedelta(days=streak) == study_sessions[streak]:
                 streak += 1
             else:
                 break
 
-
-    week_day = (today.weekday() + 1) % 7
-    week_start = today - timedelta(days=week_day)
-    next_week_start = week_start + timedelta(days=7)
-
-    study_week_query = select(func.date(StudySession.started_at)).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0, StudySession.started_at >= week_start, StudySession.started_at < next_week_start)
+    study_week_query = select(local_date_expr).distinct().where(StudySession.student_id == user.id, StudySession.cards_studied > 0, StudySession.started_at >= week_start, StudySession.started_at < next_week_start)
     study_week_result = await session.execute(study_week_query)
     study_week = study_week_result.scalars().all()
     study_week_dates = [d if isinstance(d, date) else date.fromisoformat(str(d)) for d in study_week]
     study_week_list = [week_start + timedelta(days=i) in study_week_dates for i in range(7)]
 
-    week_cards_studied_query = select(func.count(CardReview.review_id).label("num_cards")).where(CardReview.student_id == user.id, CardReview.reviewed_at >= week_start, CardReview.reviewed_at < next_week_start)
+    week_cards_studied_query = select(func.count(CardReview.review_id).label("num_cards")).where(CardReview.student_id == user.id, CardReview.reviewed_at >= week_start_dt, CardReview.reviewed_at < next_week_start_dt)
     week_cards_studied_result = await session.execute(week_cards_studied_query)
     week_cards_studied = week_cards_studied_result.scalar_one()
 
