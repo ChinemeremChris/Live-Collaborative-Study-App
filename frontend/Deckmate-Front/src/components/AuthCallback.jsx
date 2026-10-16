@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useLocation } from "react-router-dom"
 import toast from "react-hot-toast"
 import { PageSpinner } from "./PageSpinner"
+import { syncTimeZone } from "../lib/syncTimeZone"
 
 export const AuthCallback = () => {
     const queryClient = useQueryClient()
@@ -28,9 +29,10 @@ export const AuthCallback = () => {
     } = useMutation({
         mutationFn: FinishOAuth,
         onSuccess: async () => {
+            await syncTimeZone()
+            await queryClient.invalidateQueries({ queryKey: ["user"]})
             const next = location.state?.next || "/"
             navigate(next, { replace: true })
-            await queryClient.refetchQueries({ queryKey: ["user"]})
         },
         onError: (error) => {
             toast.error(error.message)

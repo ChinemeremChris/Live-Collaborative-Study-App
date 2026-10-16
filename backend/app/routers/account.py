@@ -45,7 +45,8 @@ async def CompleteOauthProfile(request: Request, user_data: Annotated[UserUpdate
 
 @router.get("/stats")
 @limiter.limit("10/min")
-async def GetStats (request: Request, tz: ZoneInfo = Depends(get_user_timezone), user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def GetStats (request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    tz = get_user_timezone(user)
     today = datetime.now(timezone.utc).astimezone(tz).date()
     utc_offset = datetime.now(tz).utcoffset()
     total_seconds = int(utc_offset.total_seconds())
@@ -53,6 +54,7 @@ async def GetStats (request: Request, tz: ZoneInfo = Depends(get_user_timezone),
     minutes = remainder // 60
     sign = '+' if total_seconds >= 0 else '-'
     offset_str = f"{sign}{hours:02d}:{minutes:02d}"
+    
     local_date_expr = func.date(func.convert_tz(StudySession.started_at, '+00:00', offset_str))
 
     week_day = (today.weekday() + 1) % 7

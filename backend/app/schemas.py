@@ -15,6 +15,7 @@ class BaseSchema(BaseModel):
 class UserRead(schemas.BaseUser[uuid.UUID]):
     fname: Optional[str] = None
     lname: Optional[str] = None
+    timezone: Optional[str] = None
 
 class UserCreate(schemas.BaseUserCreate):
     fname: str
@@ -25,6 +26,7 @@ class UserUpdate(schemas.BaseUserUpdate):
     lname: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
+    timezone: Optional[str] = None
 
 class UserStats(BaseSchema):
     study_streak: int
@@ -248,6 +250,29 @@ class StudySessionOut(BaseSchema):
     cards_studied: int | None
     started_at: datetime
     completed_at: datetime | None
+
+class StudySessionMetaOut(BaseSchema):
+    session_id: uuid.UUID
+    deck_id: uuid.UUID
+    deck_name: str
+    cards_due: int | None
+    cards_studied: int | None
+    started_at: datetime
+    completed_at: datetime | None
+    easy: int | None
+    medium: int | None
+    hard: int | None
+    forgot: int | None
+
+class SessionStatsOut(BaseSchema):
+    study_time: float
+    study_time_diff: float | None
+    num_sessions: int
+    num_sessions_diff: float | None
+    cards_studied: int
+    cards_studied_diff: float | None
+    accuracy: int
+    accuracy_diff: float | None
 
 class RoomCard(BaseSchema):
     card_id: uuid.UUID

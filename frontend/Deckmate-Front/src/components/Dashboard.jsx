@@ -9,10 +9,8 @@ import { useQuery } from "@tanstack/react-query"
 import { Plus, Search } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 export const Dashboard = () => {
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone; 
     const navigate = useNavigate()
     const { user } = useAuth()
-
     const Greeting = () => {
         const hour = new Date().getHours()
         if (hour < 12) return 'Good Morning'
@@ -25,7 +23,6 @@ export const Dashboard = () => {
             method: "GET",
             credentials: "include",
             headers: {
-                "X-User-Timezone": userTimezone,
                 "Content-Type": "application/json"
             }
         })
@@ -223,10 +220,10 @@ export const Dashboard = () => {
                     </div>
                     {/* actual session table */}
                     <div className="rounded-xl bg-white px-3 py-4">
-                        {studySessions?.length > 0 ?
+                        {studySessions?.study_sessions?.length > 0 ?
                             <div className="flex flex-col gap-2">
                                 {
-                                    studySessions?.map((session) => (
+                                    studySessions?.study_sessions?.map((session) => (
                                         <DashSession key={session.session_id} card_title={session.deck_name} session_date={session.started_at} num_cards_studied={session.cards_studied} />
                                     ))
                                 }

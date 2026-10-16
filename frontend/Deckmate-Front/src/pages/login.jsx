@@ -1,10 +1,12 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { UserPlus } from "lucide-react"
 import { useState } from "react"
 import toast from "react-hot-toast"
 import { useLocation, useNavigate } from "react-router-dom"
+import { syncTimeZone } from "../lib/syncTimeZone"
 
 export const Login = () =>{
+    const queryClient = useQueryClient()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const navigate = useNavigate()
@@ -94,7 +96,11 @@ export const Login = () =>{
         isPending
     } = useMutation({
         mutationFn: HandleLogin,
-        onSuccess: () => {
+        onSuccess: async () => {
+            await syncTimeZone()
+            queryClient.invalidateQueries({
+                queryKey: ["user"]
+            })
             const next = location.state?.next || "/"
             navigate(next, { replace: true })
         },

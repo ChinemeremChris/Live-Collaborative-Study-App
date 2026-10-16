@@ -6,9 +6,11 @@ import { PageSpinner } from "../components/PageSpinner"
 import { MoveLeft, MoveRight, RotateCcw, Square } from "lucide-react"
 import toast from "react-hot-toast"
 import { StudySummary } from "./StudySummary"
+import { useAuth } from "../contexts/UserContext"
 
 
 export const StudyView = () => {
+    const { user } = useAuth()
     const { deck_id } = useParams()
     const [searchParams, setSearchParams] = useSearchParams()
     const studyMode = searchParams.get("study_mode")
@@ -144,6 +146,12 @@ export const StudyView = () => {
             queryClient.invalidateQueries({
                 queryKey: ["stats"]
             })
+            queryClient.invalidateQueries({
+                queryKey: ["session_stats", user?.id]
+            })
+            queryClient.invalidateQueries({
+                queryKey: ["my-study-sessions", user?.id]
+            })
             navigate(`/study/summary/${deck_id}?session_id=${sessionID}`, { replace: true })
         },
         onError: (error) => {
@@ -169,7 +177,6 @@ export const StudyView = () => {
     } = useMutation({
         mutationFn: StartSession,
         onSuccess: (data) => {
-            console.log("sessionID", data?.study_session)
             setSessionID(data?.study_session)
             setSearchParams((prev) => {
                 prev.set("session_id", data?.study_session)
@@ -185,6 +192,11 @@ export const StudyView = () => {
         mutate: submitRating
     } = useMutation({
         mutationFn: HandleRate,
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: ["session_stats", user?.id]
+            })
+        },
         onError: (error) => {
             toast.error(error.message)
         }
@@ -195,6 +207,9 @@ export const StudyView = () => {
     } = useMutation({
         mutationFn: ResetCardProgress,
         onSuccess: (data) => {
+            queryClient.invalidateQueries({
+                queryKey: ["session_stats", user?.id]
+            })
             toast.success("Successfully reset card progress")
         },
         onError: (error) => {

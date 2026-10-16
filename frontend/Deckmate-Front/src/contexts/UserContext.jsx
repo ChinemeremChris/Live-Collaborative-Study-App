@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { syncTimeZone } from "../lib/syncTimeZone";
 
 const UserContext = createContext(null)
 
@@ -27,6 +28,15 @@ export const UserProvider = ({ children }) => {
         queryFn: GetUserDetails,
         staleTime: 1000 * 60 * 60
     })
+
+    useEffect(() => {
+        const setup = async () => {
+            if (user){
+                await syncTimeZone()
+            }
+        }
+        setup()
+    }, [user?.id])
 
 
     return (

@@ -1,9 +1,10 @@
 from fastapi import Header
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Annotated
+from app.users import User
 
-def get_user_timezone(x_user_timezone: Annotated[str, Header()] = "UTC") -> ZoneInfo:
+def get_user_timezone(user: User) -> ZoneInfo:
     try:
-        return ZoneInfo(x_user_timezone)
+        return ZoneInfo(user.timezone or "UTC")
     except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo("UTC")

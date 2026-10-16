@@ -74,7 +74,7 @@ export const DeckCreate = () => {
     }, [])
 
     useEffect(() => {
-        setAllowDelete(cards?.length > 2)
+        setAllowDelete(cards?.length > 4)
     }, [cards])
 
     const truncated_cards = cards.map((card) => (

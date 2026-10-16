@@ -63,18 +63,18 @@ export const Sidebar = () => {
                     {
                         (!isLoading && user) ? 
                             <div className="flex flex-col gap-5.5">
-                                <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                <button type="button" className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                     <Layers />
                                     <div>My Decks</div>
-                                </div>
-                                <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                </button>
+                                <button type="button" onClick={() => HandleButtonClick('/history/study')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                     <RotateCcwIcon />
                                     <div>Study History</div>
-                                </div>
-                                <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                </button>
+                                <button type="button" className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                     <Trophy />
                                     <div>My Rooms</div>
-                                </div>
+                                </button>
                             </div>
                         :
                             <div className="flex flex-col gap-5.5">
