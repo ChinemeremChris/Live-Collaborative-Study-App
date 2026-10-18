@@ -71,7 +71,7 @@ export const Sidebar = () => {
                                     <RotateCcwIcon />
                                     <div>Study History</div>
                                 </button>
-                                <button type="button" className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                <button type="button" onClick={() => HandleButtonClick('/history/rooms')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                     <Trophy />
                                     <div>My Rooms</div>
                                 </button>

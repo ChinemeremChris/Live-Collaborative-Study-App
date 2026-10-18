@@ -56,7 +56,7 @@ export const StudyHistory = () => {
             credentials: "include",
             headers: {
                 "Content-Type": "application/json"
-            },
+            }
         })
         if (!response.ok){
             const error = await response.json()

@@ -26,7 +26,7 @@ async def GetMySessions(request: Request, cursor: Annotated[str, Query()] = None
         query = None
         if cursor:
             current_cursor = decode_cursor(cursor)
-            query = select(StudySession).options(selectinload(StudySession.deck)).where(StudySession.student_id == user.id, or_(StudySession.started_at < current_cursor.get("started_at", None), and_(StudySession.started_at == current_cursor.get("started_at", None), StudySession.session_id < current_cursor.get("session_id", None)))).order_by(StudySession.started_at.desc(), StudySession.session_id.desc()).limit(limit+1)
+            query = select(StudySession).options(selectinload(StudySession.deck)).where(StudySession.student_id == user.id, or_(StudySession.started_at < current_cursor.get("item_date", None), and_(StudySession.started_at == current_cursor.get("item_date", None), StudySession.session_id < current_cursor.get("id", None)))).order_by(StudySession.started_at.desc(), StudySession.session_id.desc()).limit(limit+1)
         else:
             query = select(StudySession).options(selectinload(StudySession.deck)).where(StudySession.student_id == user.id).order_by(StudySession.started_at.desc(), StudySession.session_id.desc()).limit(limit+1)
         result = await session.execute(query)

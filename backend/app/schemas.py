@@ -234,6 +234,7 @@ class RoomOut(BaseSchema):
     participant_count: int
 
 class RoomParticipantOut(BaseSchema):
+    room_id: uuid.UUID
     room_code: str
     hosted_by: str
     deck_name: str
@@ -278,6 +279,12 @@ class RoomCard(BaseSchema):
     card_id: uuid.UUID
     room_question: str
     short_answer : str | None
+
+class RoomStatsOut(BaseSchema):
+    rooms_played: int | None
+    rooms_hosted: int | None
+    best_position: int | None
+    accuracy: float | None
 
 class RoomChoiceOut(BaseSchema):
     choice_id: uuid.UUID

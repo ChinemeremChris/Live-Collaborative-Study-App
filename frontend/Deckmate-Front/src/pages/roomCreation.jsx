@@ -3,12 +3,13 @@ import { PageSpinner } from "../components/PageSpinner"
 import { RoomSearchModal } from "../components/RoomSearchModal"
 import { useAuth } from "../contexts/UserContext"
 import toast from "react-hot-toast"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { RoomCard } from "../components/RoomCard"
 
 export const RoomCreate = () => {
     const {user, userLoading} = useAuth()
+    const queryClient = useQueryClient()
     const [searchParams, setSearchParams] = useSearchParams()
     const deck_id = searchParams.get("deck_id")
     const navigate = useNavigate()
@@ -141,6 +142,9 @@ export const RoomCreate = () => {
         },
         onSuccess: (data) => {
             console.log("success")
+            queryClient.invalidateQueries({
+                queryKey: ["pastRooms", user?.id]
+            })
             navigate(`/rooms/lobby/${data.room_id}`)
         }
     })

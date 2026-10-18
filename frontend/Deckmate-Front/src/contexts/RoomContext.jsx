@@ -159,6 +159,9 @@ export const RoomProvider = () => {
                     //maybe display a fancy loading state while results are
                     setGamePhase('end_game')
                     closeWS(1000)
+                    queryClient.invalidateQueries({
+                        queryKey: ["pastRooms", user?.id]
+                    })
                     navigate(`/rooms/results/${room_id}`, { replace: true })
                     break
                 default:

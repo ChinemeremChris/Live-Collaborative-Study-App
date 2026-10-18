@@ -1,12 +1,13 @@
 import logging
 from fastapi import APIRouter, Depends, Query, Path, Body, Request, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, cast, Integer, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 from app.users import current_active_user, current_optional_user, get_user_from_cookie
 from app.db import get_async_session, async_session_maker, User, Room, RoomParticipant, RoomQuestion, RoomQuestionChoice, RoomAnswer, Card, Deck
-from app.schemas import RoomOut, RoomLobbyInfoOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut, RoomCard, CardOutNoDue, DeckEdit
+from app.schemas import RoomStatsOut, RoomOut, RoomLobbyInfoOut, RoomParticipantOut, RoomChoiceOut, RoomQAOut, RoomInfoOut, RoomCard, CardOutNoDue, DeckEdit
+from app.encoder import encode_cursor, decode_cursor
 from typing import Annotated
 import uuid
 from datetime import datetime, timezone
@@ -110,32 +111,6 @@ async def CreateRoom(request: Request, deck_id: Annotated[uuid.UUID, Path()], in
             ]
             session.add_all(question_choices)
 
-        # for index, card in enumerate(cards, 0):
-        #     other_answers = [{"definition": c.card_definition, "definition_url": c.card_definition_url, "is_correct": False} for c in cards if c.card_definition != card.card_definition]
-        #     distractors = random.sample(other_answers, min(len(other_answers), 3))
-        #     options = [{"definition": card.card_definition, "definition_url": card.card_definition_url, "is_correct": True}] + distractors
-        #     random.shuffle(options)
-        #     room_question = RoomQuestion(
-        #         room_id = room.room_id,
-        #         prompt = card.card_term,
-        #         prompt_url = card.card_term_url,
-        #         order_in_room = index
-        #     )
-        #     session.add(room_question)
-        #     await session.flush()
-        #     question_choices = [
-        #         RoomQuestionChoice(
-        #             room_question_id = room_question.room_question_id,
-        #             choice_text = option["definition"],
-        #             choice_url = option["definition_url"],
-        #             is_correct = option["is_correct"],
-        #             choice_order = i
-        #         )
-        #         for i, option in enumerate(options, 0)
-        #     ]
-        #     session.add_all(question_choices)
-
-
         room_participant = RoomParticipant(
             participant_id = user.id,
             room_id = room.room_id
@@ -219,17 +194,62 @@ async def LeaveRoom(request: Request, room_id: Annotated[uuid.UUID, Path()], use
         await session.rollback()
         logger.error(f"LeaveRoom failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to allow user to leave room")
-    
+
+
+@router.get("/stats")
+@limiter.limit("10/minute")
+async def RoomStats(request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        stats_query = select(func.count(RoomParticipant.room_id).label("rooms_played"), func.coalesce(func.min(cast(func.substring_index(RoomParticipant.placement, "/", 1), Integer)), None).label("best_position")).group_by(RoomParticipant.participant_id).where(RoomParticipant.participant_id == user.id)
+        stats_result = await session.execute(stats_query)
+        stats = stats_result.one()
+
+        room_host_query = select(func.coalesce(func.count(Room.room_id), 0).label("host")).where(Room.host_id == user.id)
+        room_host_result = await session.execute(room_host_query)
+        room_host_count = room_host_result.one()
+
+        total_answers_query = select(func.coalesce(func.count(RoomAnswer.room_question_id), 0).label("total")).where(RoomAnswer.student_id == user.id)
+        total_answers_result = await session.execute(total_answers_query)
+        total_answers = total_answers_result.one()
+
+        correct_answers_query = select(func.coalesce(func.count(RoomAnswer.room_question_id), 0).label("correct")).where(RoomAnswer.student_id == user.id, RoomAnswer.is_correct.is_(True))
+        correct_answers_result = await session.execute(correct_answers_query)
+        correct_answers = correct_answers_result.one()
+
+        accuracy = round(((correct_answers.correct / total_answers.total) * 100), 2)
+
+        return RoomStatsOut(
+            rooms_played=stats.rooms_played or 0,
+            rooms_hosted=room_host_count.host or 0,
+            best_position=stats.best_position or None,
+            accuracy=accuracy or None
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"RoomStats failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get room stats")
+
 
 @router.get("/participants/me")
-@limiter.limit("10/minute")
-async def GetMyRooms(request: Request, limit: Annotated[int, Query()] = 20, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+@limiter.limit("30/minute")
+async def GetMyRooms(request: Request, cursor: Annotated[str, Query()] = None, limit: Annotated[int, Query()] = 5, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
-        rooms_query = select(Room, RoomParticipant).options(selectinload(Room.host), selectinload(Room.deck)).outerjoin(Room.participation).where(RoomParticipant.participant_id == user.id).order_by(Room.created_at.desc()).limit(limit)
+        if cursor:
+            current_cursor = decode_cursor(cursor)
+            rooms_query = select(Room, RoomParticipant).options(selectinload(Room.host), selectinload(Room.deck)).outerjoin(Room.participation).where(RoomParticipant.participant_id == user.id, or_(Room.created_at < current_cursor.get("item_date", None), and_(Room.created_at == current_cursor.get("item_date", None), Room.room_id < current_cursor.get("id", None)))).order_by(Room.created_at.desc(), Room.room_id.desc()).limit(limit+1)
+        else:
+            rooms_query = select(Room, RoomParticipant).options(selectinload(Room.host), selectinload(Room.deck)).outerjoin(Room.participation).where(RoomParticipant.participant_id == user.id).order_by(Room.created_at.desc()).limit(limit+1)
         rooms_result = await session.execute(rooms_query)
         rows = rooms_result.all()
+        has_next = len(rows) > limit
+        next_cursor = None
+        if has_next:
+            rows = rows[:limit]
+            next_cursor = encode_cursor(rows[-1].Room.created_at, rows[-1].Room.room_id)
         room_out_list = [
             RoomParticipantOut(
+                room_id=row.Room.room_id,
                 room_code=row.Room.room_code,
                 hosted_by="You" if row.Room.host.id == user.id else (f"{row.Room.host.fname} {row.Room.host.lname}" if not row.Room.host.is_deleted else "Deleted User"),
                 deck_name=row.Room.deck.deck_name,
@@ -241,7 +261,10 @@ async def GetMyRooms(request: Request, limit: Annotated[int, Query()] = 20, user
             ) 
             for row in rows
         ]
-        return room_out_list
+        return {
+            "room_list": room_out_list,
+            "next_cursor": next_cursor
+        }
     except HTTPException:
         await session.rollback()
         raise
