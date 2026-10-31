@@ -15,6 +15,8 @@ class BaseSchema(BaseModel):
 class UserRead(schemas.BaseUser[uuid.UUID]):
     fname: Optional[str] = None
     lname: Optional[str] = None
+    is_oauth_user: bool = False
+    is_public: bool = True
     timezone: Optional[str] = None
 
 class UserCreate(schemas.BaseUserCreate):
@@ -27,6 +29,11 @@ class UserUpdate(schemas.BaseUserUpdate):
     email: Optional[str] = None
     password: Optional[str] = None
     timezone: Optional[str] = None
+    is_public: Optional[bool] = None
+
+class ChangePasswordRequest(BaseSchema):
+    old: str
+    new: str
 
 class UserStats(BaseSchema):
     study_streak: int
@@ -83,6 +90,15 @@ class MyDeckOut(BaseSchema):
     card_count: int
     avg_rating: float | None
     rating_count: int
+    is_public: bool
+
+class MyDeckStatsOut(BaseSchema):
+    num_decks: int
+    num_sessions: int
+    num_rooms: int
+    avg_rating: float | None
+    deck_dict: dict
+
 
 class DeckOut(BaseSchema):
     deck_id: uuid.UUID

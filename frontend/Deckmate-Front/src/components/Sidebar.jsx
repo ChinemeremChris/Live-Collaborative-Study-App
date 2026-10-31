@@ -63,7 +63,7 @@ export const Sidebar = () => {
                     {
                         (!isLoading && user) ? 
                             <div className="flex flex-col gap-5.5">
-                                <button type="button" className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
+                                <button type="button" onClick={() => HandleButtonClick('/decks/me')} className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                     <Layers />
                                     <div>My Decks</div>
                                 </button>
@@ -93,12 +93,12 @@ export const Sidebar = () => {
                 {/*settings*/}
                 {
                     (!isLoading && user) && (
-                        <div className="flex flex-col gap-5.5 py-4">
+                        <button type="button" onClick={() => navigate(`/settings`)} className="flex flex-col gap-5.5 py-4">
                             <div className="flex items-center hover:cursor-pointer gap-3 lg:w-3/4">
                                 <Settings />
                                 <div>Settings</div>
                             </div>
-                        </div>
+                        </button>
                     )
                 }
             </div>

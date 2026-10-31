@@ -129,7 +129,12 @@ export const Login = () =>{
                     <div className="text-left text-3xl font-extrabold flex justify-start w-full">LOGIN</div>
                     <div className="flex flex-col gap-10 w-full">
                         <input type="email" className="text-xl py-2 pl-0 pr-2 border-b-2 font-bold focus:outline-none" value={email} placeholder="Username" onChange={(e) => setEmail(e.target.value)} />
-                        <input type="password" className="text-xl py-2 pl-0 pr-2 border-b-2 font-bold focus:outline-none" value={password} placeholder="Enter password" onChange={(e) => setPassword(e.target.value)} />
+                        <div className="flex flex-col gap-2">
+                            <input type="password" className="text-xl py-2 pl-0 pr-2 border-b-2 font-bold focus:outline-none" value={password} placeholder="Enter password" onChange={(e) => setPassword(e.target.value)} />
+                            <button type="button" onClick={() => navigate(`/forgotten`)} className="text-left text-blue-500 italic font-semibold hover:cursor-pointer hover:underline">
+                                Forgot Password?
+                            </button>
+                        </div>
                         <div className="flex flex-row justify-center">
                             <button className={`${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} font-poppins bg-blue-900 text-xl font-semibold text-white p-3 rounded-lg w-64 x12:w-3/4`} disabled={isPending} onClick={HandleSubmit}>{isPending ? 'LOGGING IN...' : 'LOGIN'}</button>
                         </div>

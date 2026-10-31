@@ -23,6 +23,7 @@ class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
 class User(SQLAlchemyBaseUserTableUUID, Base):
     fname: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     lname: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     timezone: Mapped[Optional[str]] = mapped_column(String(50), default="UTC", nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -37,13 +38,15 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     room_answer: Mapped[list["RoomAnswer"]] = relationship(back_populates="room_student")
     student_review: Mapped[list["CardReview"]] = relationship(back_populates="card_student")
 
-
+    @property
+    def is_oauth_user(self) -> bool:
+        return len(self.oauth_accounts) > 0
 
 class Deck(Base):
     __tablename__ = "deck"
     deck_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     deck_name: Mapped[str] = mapped_column(String(250))
-    creator_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), index=True)
+    creator_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), index=True, nullable=True)
     is_public: Mapped[bool] = mapped_column(default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -128,7 +131,7 @@ class CardReview(Base):
     review_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("study_session.session_id", ondelete="CASCADE"), index=True)
-    card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("card.card_id"), index=True)
+    card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("card.card_id", ondelete="CASCADE"), index=True)
     rating: Mapped[str|None] = mapped_column(String(6), nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
@@ -202,7 +205,7 @@ class RoomAnswer(Base):
 
 
 
-engine = create_async_engine(DATABASE_URL)
+engine = create_async_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600, pool_size=10, max_overflow=20)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 async def create_db_and_tables():

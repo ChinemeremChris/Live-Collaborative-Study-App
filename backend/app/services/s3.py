@@ -4,6 +4,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from botocore.config import Config
+import asyncio
 
 load_dotenv()
 
@@ -64,5 +65,40 @@ def batch_delete_image(permanent_urls: list[str]) -> None:
     except Exception as e:
         logger.error(f"Failed batch delete: {e}", exc_info=True)
 
+def copy_object(permanent_url: str) -> str:
+    prefix = f"https://{CLOUDFRONT_DOMAIN}/"
+    if not permanent_url.startswith(prefix+"cards/"):
+        raise ValueError("Not a managed image url")
 
-    
+    old_key = permanent_url[len(prefix):]
+    ext = old_key.rsplit(".", 1)[-1]
+    new_key = f"cards/{uuid.uuid4()}.{ext}"
+
+    s3_client.copy_object(
+        Bucket=BUCKET_NAME,
+        Key=new_key,
+        CopySource={"Bucket": BUCKET_NAME, "Key": old_key}
+    )
+    return f"{prefix}{new_key}"
+
+
+async def copy_images(old_urls: list[tuple], created: list[str]) -> dict:
+    sem = asyncio.Semaphore(10)
+    async def copy_one(key: str, url: str) -> str:
+        async with sem:
+            new_url = await asyncio.to_thread(copy_object, url)
+            created.append(new_url)
+            return (key, new_url)
+
+    results = await asyncio.gather(
+        *(copy_one(u[0], u[1]) for u in old_urls),
+        return_exceptions=True
+    )
+    errors = [r for r in results if isinstance(r, Exception)]
+    if errors:
+        raise errors[0]
+    results_dict = {
+        r[0]: r[1]
+        for r in results
+    }
+    return results_dict

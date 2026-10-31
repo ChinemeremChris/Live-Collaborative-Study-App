@@ -8,9 +8,12 @@ import uuid
 import os
 from dotenv import load_dotenv
 from app.schemas import UserCreate
+from app.services.sendEmail import SendEmail
+import logging
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 SECRET = os.getenv("JWT_SECRET")
 RESET_PASSWORD_SECRET = os.getenv("RESET_PASSWORD_SECRET")
 VERIFICATION_SECRET = os.getenv("VERIFICATION_SECRET")
@@ -35,14 +38,35 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             raise InvalidPasswordException(reason="Name cannot be contained in password")
         if user.lname.lower() and user.lname.lower() in password:
             raise InvalidPasswordException(reason="Name cannot be contained in password")
-        if user.email.lower() and user.email.lower() in password:
+        if (user.email.lower() and user.email.lower() in password) or (user.email.split('@', 1)[0].lower() and user.email.split('@', 1)[0].lower() in password):
             raise InvalidPasswordException(reason="Email cannot be contained in password")
 
     async def on_after_register(self, user: User, request: Request | None = None):
         print(f"User {user.id} has registered.")
 
     async def on_after_forgot_password(self, user: User, token: str, request: Request | None = None):
-        print(f"User {user.id} has forgot their password. Reset token: {token}")
+        reset_link = f"{os.getenv("FRONTEND_URL")}/reset-password?token={token}"
+
+        def send_email_wrapper():
+            try:
+                # SendEmail(
+                #     to=user.email,
+                #     subject="Reset Password for DeckMate",
+                #     html=f"""
+                #         <p>Click this <a href='{reset_link}'>link</a> to reset your password</p>
+                #         <p>This link expires in an hour</p>
+                #     """
+                # )
+                # logger.info(f"Password reset info sent to {user.email}")
+                print (f"reset link = {reset_link}")
+            except Exception as e:
+                logger.error(f"Background task failed sending email to {user.email}")
+
+        if request and "background_tasks" in request.scope:
+            bg_tasks = request.scope["background_tasks"]
+            bg_tasks.add_task(send_email_wrapper)
+        else:
+            send_email_wrapper()
 
     async def on_after_request_verify(self, user: User, token: str, request: Request | None = None):
         print(f"Verification requested for user {user.id}. Verification token: {token}")    

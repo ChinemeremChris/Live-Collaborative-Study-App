@@ -56,9 +56,10 @@ app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", ta
 app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
 #add redirect url to oauth_router: redirect to frontend
 app.include_router(fastapi_users.get_oauth_router(google_oauth_client, auth_backend, SECRET, redirect_url=os.getenv("FRONTEND_URL_CALLBACK"), associate_by_email=True, is_verified_by_default=True), prefix="/auth/google", tags=["auth"])
-app.include_router(account.router, prefix="/account", tags=["account"])
+
 
 #app routes
+app.include_router(account.router, prefix="/account", tags=["account"])
 app.include_router(tags.router, prefix="/tags", tags=["tags"])
 app.include_router(decks.router, prefix="/decks", tags=["decks"])
 app.include_router(cards.router, prefix="/cards", tags=["cards"])

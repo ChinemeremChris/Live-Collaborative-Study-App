@@ -1,13 +1,15 @@
 import logging
+import asyncio
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, Body, Path
 from app.users import current_active_user, current_optional_user
+from app.limiter import limiter
 from typing import Annotated
 from sqlalchemy import select, delete, func, or_, and_, text
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db import get_async_session, User, Deck, Tag, Deck_Tag, DeckRating, Card, CardProgress, StudySession, CardReview
-from app.schemas import DeckEdit, DeckSearch, DeckSearchSuggestion, MyDeckOut, CardOutNoDue, DeckWithCardsOut, DeckIn, DeckCreate, DeckCreateOut, DeckUpdate, BulkDeckUpdateOut
-from app.services.s3 import batch_delete_image, delete_image
+from app.db import get_async_session, User, Deck, Tag, Deck_Tag, DeckRating, Card, CardProgress, StudySession, CardReview, Room
+from app.schemas import DeckEdit, DeckSearch, DeckSearchSuggestion, MyDeckOut, MyDeckStatsOut, CardOutNoDue, DeckWithCardsOut, DeckIn, DeckCreate, DeckCreateOut, DeckUpdate, BulkDeckUpdateOut
+from app.services.s3 import batch_delete_image, delete_image, copy_images
 import uuid
 from app.limiter import limiter
 import math
@@ -20,17 +22,13 @@ router = APIRouter()
 @router.get("/suggestions")
 @limiter.limit("100/minute")
 async def SearchSuggestions(request: Request, search_term: Annotated[str|None, Query()], filter_tags: Annotated[list[uuid.UUID] | None, Query()] = None, session: AsyncSession = Depends(get_async_session)):
-    conditions = [Deck.is_public.is_(True)]
+    if not search_term:
+        return []
+    conditions = [Deck.is_public.is_(True), Deck.deck_creator.has((User.is_public.is_(True)) & (User.is_deleted.is_(False)))]
     if filter_tags:
         tag_list = filter_tags
         deck_id_with_tag_filter = select(Deck_Tag.deck_id).where(Deck_Tag.tag_id.in_(tag_list)).group_by(Deck_Tag.deck_id).having(func.count(Deck_Tag.tag_id) == len(tag_list))
         conditions.append(Deck.deck_id.in_(deck_id_with_tag_filter))
-
-        # debug
-        # print(f"tag list: {tag_list}")
-        # debug_query = select(Deck_Tag, func.count(Deck_Tag.tag_id).label("count")).group_by(Deck_Tag.deck_id).where(Deck_Tag.tag_id.in_(tag_list), Deck.deck_name.ilike(f"%{search_term}%")).limit(5)
-        # debug_result = await session.execute(debug_query)
-        # print(f"deck_ids with matching tags: {debug_result.all()}")
 
     if search_term:
         conditions.append(Deck.deck_name.ilike(f"%{search_term}%"))
@@ -50,7 +48,7 @@ async def SearchSuggestions(request: Request, search_term: Annotated[str|None, Q
 @router.get("/search")
 @limiter.limit("60/minute")
 async def SearchForDeck(request: Request, search_term: Annotated[str|None, Query()] = None, filter_tags: Annotated[list[uuid.UUID] | None, Query()] = None, min_rating: Annotated[float | None, Query()] = None, max_rating: Annotated[float | None, Query()] = None, min_cards: Annotated[int | None, Query()] = None, max_cards: Annotated[int | None, Query()] = None, page: Annotated[int, Query(ge=1)] = 1, limit: Annotated[int, Query(ge=1, le=100)] = 20, session: AsyncSession = Depends(get_async_session)):
-    conditions = [Deck.is_public.is_(True)]
+    conditions = [Deck.is_public.is_(True), Deck.deck_creator.has((User.is_public.is_(True)) & (User.is_deleted.is_(False)))]
 
     if not search_term and not filter_tags:
         return {
@@ -156,12 +154,13 @@ async def SearchForDeck(request: Request, search_term: Annotated[str|None, Query
 @router.get("/discover")
 @limiter.limit("10/minute")
 async def GetDiscoverDecks(request: Request, user: User = Depends(current_optional_user), session: AsyncSession = Depends(get_async_session)):
+    public_deck_conditions = [Deck.is_public.is_(True), Deck.deck_creator.has((User.is_public.is_(True)) & (User.is_deleted.is_(False)))]
     today = datetime.now(timezone.utc)
     week_start = today - timedelta(days=((today.weekday() + 1) % 7))
     deck_rating_sub = select(DeckRating.deck_id, func.avg(DeckRating.rating).label("avg_rating"), func.count(DeckRating.rater_id).label("num_ratings")).group_by(DeckRating.deck_id).subquery()
     card_count_sub = select(Card.deck_id, func.count(Card.card_id).label("num_cards")).group_by(Card.deck_id).subquery()
 
-    study_total_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards"), func.count(StudySession.deck_id).label("times_studied"), func.count(func.distinct(StudySession.student_id)).label("unique_students")).options(selectinload(Deck.deck_creator)).join(StudySession.deck).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).group_by(StudySession.deck_id).where(StudySession.started_at >= week_start, StudySession.started_at < week_start + timedelta(days=7), Deck.is_public.is_(True))
+    study_total_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards"), func.count(StudySession.deck_id).label("times_studied"), func.count(func.distinct(StudySession.student_id)).label("unique_students")).options(selectinload(Deck.deck_creator)).join(StudySession.deck).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).group_by(StudySession.deck_id).where(StudySession.started_at >= week_start, StudySession.started_at < week_start + timedelta(days=7), *public_deck_conditions)
     study_total_result = await session.execute(study_total_query)
     study_total = study_total_result.all() 
     popular_decks = sorted(study_total, key=lambda row: math.log2(row.times_studied + 1) * 10 + row.unique_students * 10, reverse=True)[:10]
@@ -174,7 +173,7 @@ async def GetDiscoverDecks(request: Request, user: User = Depends(current_option
         rating_count=row.num_ratings if row.num_ratings else 0
     )for row in popular_decks]
 
-    recent_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards")).options(selectinload(Deck.deck_creator)).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).where(Deck.is_public.is_(True)).order_by(Deck.created_at.desc()).limit(10)
+    recent_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards")).options(selectinload(Deck.deck_creator)).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).where(*public_deck_conditions).order_by(Deck.created_at.desc()).limit(10)
     recent_result = await session.execute(recent_query)
     recent_decks = recent_result.all()
     recent_decks_out = [DeckSearch(
@@ -186,7 +185,7 @@ async def GetDiscoverDecks(request: Request, user: User = Depends(current_option
         rating_count=row.num_ratings if row.num_ratings else 0
     )for row in recent_decks]
 
-    top_rated_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards")).options(selectinload(Deck.deck_creator)).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).where(Deck.is_public.is_(True), deck_rating_sub.c.avg_rating.is_not(None), deck_rating_sub.c.num_ratings >= 5).order_by(deck_rating_sub.c.avg_rating.desc()).limit(10)
+    top_rated_query = select(Deck, deck_rating_sub.c.avg_rating, deck_rating_sub.c.num_ratings, func.coalesce(card_count_sub.c.num_cards, 0).label("num_cards")).options(selectinload(Deck.deck_creator)).outerjoin(deck_rating_sub, Deck.deck_id == deck_rating_sub.c.deck_id).outerjoin(card_count_sub, Deck.deck_id == card_count_sub.c.deck_id).where(*public_deck_conditions, deck_rating_sub.c.avg_rating.is_not(None), deck_rating_sub.c.num_ratings >= 5).order_by(deck_rating_sub.c.avg_rating.desc()).limit(10)
     top_rated_result = await session.execute(top_rated_query)
     top_rated_decks = top_rated_result.all()
     top_rated_decks_out = [DeckSearch(
@@ -207,25 +206,73 @@ async def GetDiscoverDecks(request: Request, user: User = Depends(current_option
     
     
 @router.get("/me")
-async def GetUserDecks(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+@limiter.limit("10/minute")
+async def GetUserDecks(request: Request, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     if not user:
         raise HTTPException(status_code=401, detail="Login to get deck data")
-    
-    main_query = select(Deck, func.avg(DeckRating.rating).label("average_rating"), func.count(DeckRating.rater_id).label("num_ratings"), func.count(Card.card_id.distinct()).label("num_cards")).outerjoin(Deck.deck_rating).outerjoin(Deck.child_cards).where(Deck.creator_id == user.id).group_by(Deck.deck_id)
+
+    #number of my decks
+    #average rating of my decks
+    #number of study sessions with my decks
+    #rooms played with my decks
+
+    num_decks_query = select(func.coalesce(func.count(Deck.deck_id), 0).label("num_decks")).where(Deck.creator_id == user.id)
+    num_decks_result = await session.execute(num_decks_query)
+    num_decks = num_decks_result.scalar_one()
+
+    avg_rating_query = select(func.avg(DeckRating.rating).label("avg_rating")).outerjoin(DeckRating.deck).where(Deck.creator_id == user.id)
+    avg_rating_result = await session.execute(avg_rating_query)
+    avg_rating = avg_rating_result.scalar_one_or_none()
+
+    num_sessions_query = select(func.coalesce(func.count(StudySession.session_id), 0).label("num_sessions")).outerjoin(StudySession.deck).where(Deck.creator_id == user.id)
+    num_sessions_result = await session.execute(num_sessions_query)
+    num_sessions = num_sessions_result.scalar_one()
+
+    num_rooms_query = select(func.coalesce(func.count(Room.room_id), 0).label("num_rooms")).outerjoin(Room.deck).where(Deck.creator_id == user.id)
+    num_rooms_result = await session.execute(num_rooms_query)
+    num_rooms = num_rooms_result.scalar_one()
+
+    rating_sq = (select(DeckRating.deck_id, func.avg(DeckRating.rating).label("avg_rating"), func.count().label("num_ratings")).group_by(DeckRating.deck_id).subquery())
+    card_sq = (select(Card.deck_id, func.count().label("num_cards")).group_by(Card.deck_id).subquery())
+
+    main_query = (select(Deck, rating_sq.c.avg_rating, func.coalesce(rating_sq.c.num_ratings, 0).label("num_ratings"), func.coalesce(card_sq.c.num_cards, 0).label("num_cards")).outerjoin(rating_sq, rating_sq.c.deck_id == Deck.deck_id).outerjoin(card_sq, card_sq.c.deck_id == Deck.deck_id).where(Deck.creator_id == user.id).order_by(Deck.created_at.desc()))
     result = await session.execute(main_query)
     rows = result.all()
     deck_out_list = []
 
+    deck_out_dict = {}
     for row in rows:
-        deck_out_list.append(MyDeckOut(
-            deck_id = row.Deck.deck_id,
-            deck_name = row.Deck.deck_name,
-            card_count = row.num_cards,
-            avg_rating = row.average_rating,
-            rating_count = row.num_ratings or 0
-        ))
+        converted_date = row.Deck.created_at.strftime("%B %Y")
+        if converted_date not in deck_out_dict:
+            deck_out_dict[converted_date] = [
+                MyDeckOut(
+                    deck_id = row.Deck.deck_id,
+                    deck_name = row.Deck.deck_name,
+                    card_count = row.num_cards,
+                    avg_rating = row.avg_rating,
+                    rating_count = row.num_ratings or 0,
+                    is_public = row.Deck.is_public
+                )
+            ]
+        else:
+            deck_out_dict[converted_date].append(
+                MyDeckOut(
+                    deck_id = row.Deck.deck_id,
+                    deck_name = row.Deck.deck_name,
+                    card_count = row.num_cards,
+                    avg_rating = row.avg_rating,
+                    rating_count = row.num_ratings or 0,
+                    is_public = row.Deck.is_public
+                )
+            )
 
-    return deck_out_list
+    return MyDeckStatsOut(
+        num_decks=num_decks,
+        num_sessions=num_sessions,
+        num_rooms=num_rooms,
+        avg_rating=avg_rating,
+        deck_dict=deck_out_dict
+    )
 
 @router.get("/{deck_id}")
 async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_optional_user), session: AsyncSession = Depends(get_async_session)):
@@ -238,15 +285,17 @@ async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
     row = result.one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Deck not found")
-    if not row.Deck.is_public and (not user or user.id != row.Deck.creator_id):
-        raise HTTPException(status_code=403, detail="Deck is private")
+    if not row.Deck.deck_creator or row.Deck.deck_creator.is_deleted:
+        raise HTTPException(status_code=403, detail="Deck is private/deleted")
+    if (not row.Deck.is_public or not row.Deck.deck_creator.is_public) and (not user or user.id != row.Deck.creator_id):
+        raise HTTPException(status_code=403, detail="Deck is private/deleted")
 
     card_count_query = select(func.coalesce(func.count(Card.card_id), 0).label("num_cards")).where(Card.deck_id == deck_id)
     card_count_result = await session.execute(card_count_query)
     card_count = card_count_result.scalar_one()
 
     creator_deck_count = 0
-    if row.Deck.deck_creator or not row.Deck.deck_creator.is_deleted:
+    if row.Deck.deck_creator and not row.Deck.deck_creator.is_deleted:
         creator_count_query = select(func.coalesce(func.count(Deck.deck_id), 0).label("creator_public_decks")).where(Deck.creator_id == row.Deck.deck_creator.id, Deck.is_public.is_(True))
         creator_count_result = await session.execute(creator_count_query)
         creator_deck_count = creator_count_result.scalar_one()        
@@ -331,7 +380,7 @@ async def GetOneDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
 @limiter.limit("3/min")
 async def GetDeckForEdit(request: Request, deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
-        deck_query = select(Deck).options(selectinload(Deck.child_cards), selectinload(Deck.deck_tag)).where(Deck.deck_id == deck_id)
+        deck_query = select(Deck).options(selectinload(Deck.child_cards), selectinload(Deck.deck_tag)).where(Deck.deck_id == deck_id, Deck.creator_id == user.id)
         deck_result = await session.execute(deck_query)
         deck = deck_result.scalar_one_or_none()
         if not deck:
@@ -606,7 +655,7 @@ async def BulkUpdate(deck_id: Annotated[uuid.UUID, Path()], updated_data: Annota
         await session.execute(delete(Card).where(Card.deck_id == deck_id, Card.card_id.in_([uuid.UUID(card_uuid) for card_uuid in updated_data.deleted_cards])))
         await session.commit()
         try:
-            batch_delete_image(delete_image_urls)
+            asyncio.to_thread(batch_delete_image(delete_image_urls))
         except Exception as e:
             logger.warning(f"Failed to delete some S3 objects", exc_info=True)
 
@@ -624,6 +673,82 @@ async def BulkUpdate(deck_id: Annotated[uuid.UUID, Path()], updated_data: Annota
         logger.error(f"UpdateDeck error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update deck")
 
+
+@router.post("/clone/{deck_id}")
+@limiter.limit("3/minute")
+async def CloneDeck(request: Request, deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        deck_query = select(Deck).options(selectinload(Deck.child_cards), selectinload(Deck.deck_tag)).where(Deck.deck_id == deck_id)
+        deck_result = await session.execute(deck_query)
+        deck = deck_result.scalar_one_or_none()
+        if not deck:
+            raise HTTPException(status_code=404, detail="Deck not found")
+        if not deck.is_public and deck.creator_id != user.id:
+            raise HTTPException(status_code=403, detail="Deck not available for cloning")
+        new_deck = Deck(
+            deck_name=deck.deck_name,
+            creator_id=user.id,
+            is_public=user.is_public,
+        )
+        session.add(new_deck)
+        await session.flush()
+        await session.refresh(new_deck)
+        deck_tags = [
+            Deck_Tag(
+                tag_id=tag.tag_id,
+                deck_id=new_deck.deck_id
+            )
+        for tag in deck.deck_tag]
+        session.add_all(deck_tags)
+        await session.flush()
+        new_card_dict = {
+            old_card.card_id: {
+                "deck_id": new_deck.deck_id,
+                "card_term": old_card.card_term,
+                "card_definition": old_card.card_definition,
+                "card_term_url": old_card.card_term_url or None,
+                "card_definition_url": old_card.card_definition_url or None
+            }
+            for old_card in deck.child_cards
+        }
+        jobs = []
+        created = []
+        for key, card in new_card_dict.items():
+            if card.get("card_term_url") is not None:
+                jobs.append(((card.get("card_id"), "card_term_url"), card.get("card_term_url")))
+            if card.get("card_definition_url") is not None:
+                jobs.append(((card.get("card_id"), "card_definition_url"), card.get("card_definition_url")))
+        new_url_dict = await copy_images(jobs, created)
+        for (card_id, field), value in new_url_dict.items():
+            new_card_dict.get(card_id, {})[field] = value
+        new_cards = [
+            Card(
+                deck_id=new_deck.deck_id,
+                card_term=c.get("card_term"),
+                card_definition=c.get("card_definition"),
+                card_term_url=c.get("card_term_url"),
+                card_definition_url=c.get("card_definition_url")
+            )
+            for c in new_card_dict.values()
+        ]
+        session.add_all(new_cards)
+        await session.flush()
+        await session.commit()
+        return {"deck_id": new_deck.deck_id}   
+    
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    except Exception as e:
+        await session.rollback()
+        if created:
+            await asyncio.to_thread(batch_delete_image, created)
+        logger.error(f"CloneDeck error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to clone deck")
+    
+
+
 @router.delete("/{deck_id}")
 async def DeleteDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try:
@@ -638,7 +763,7 @@ async def DeleteDeck(deck_id: Annotated[uuid.UUID, Path()], user: User = Depends
                 delete_image_urls.append(card.card_term_url)
             if card.card_definition_url:
                 delete_image_urls.append(card.card_definition_url)
-        batch_delete_image(delete_image_urls)
+        asyncio.to_thread(batch_delete_image(delete_image_urls))
 
         await session.delete(deck_to_be_deleted)
         await session.commit()
@@ -656,7 +781,7 @@ async def RateDeck(deck_id: Annotated[uuid.UUID, Path()], rating: Annotated[int,
     try:
         if rating < 1 or rating > 5:
             raise HTTPException(status_code=400, detail="Rating must be between 1 and 5, inclusive")
-        query = select(Deck).where(Deck.deck_id == deck_id)
+        query = select(Deck).where(Deck.deck_id == deck_id, Deck.deck_creator.has((User.is_public.is_(True) & (User.is_deleted.is_(False)))))
         result = await session.execute(query)
         deck = result.scalar_one_or_none()
         if not deck:

@@ -289,6 +289,9 @@ export const DeckEdit = () => {
             toast.success("Successfully edited deck")
             queryClient.invalidateQueries(["edit", deck_id])
             queryClient.invalidateQueries(["deck", deck_id])
+            queryClient.invalidateQueries({
+                queryKey: ["my-decks", user?.id]
+            })
             navigate(`/decks/${deck_id}`, { replace: true })
         },
         onError: (error) => {

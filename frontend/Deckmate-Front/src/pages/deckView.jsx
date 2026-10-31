@@ -9,7 +9,7 @@ import { useAuth } from "../contexts/UserContext"
 import { CompartNumber } from "../lib/compact"
 import { TimeAgo } from "../lib/timeAgo"
 import { CardStackIcon } from "../components/CardStackIcon"
-import { Clock, Gamepad2, Minus, Play, Plus, SquarePen, Trash2 } from "lucide-react"
+import { Clock, Copy, Gamepad2, Minus, Play, Plus, SquarePen, Trash2 } from "lucide-react"
 import { DeleteModal } from "../components/DeleteModal"
 
 export const DeckView = () => {
@@ -81,6 +81,27 @@ export const DeckView = () => {
         return response.json()
     }
 
+    const CloneDeck = async () => {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/decks/clone/${deck_id}`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        })
+        if (!response.ok){
+            const error = await response.json()
+            if (response.status === 401){
+                navigate(`/login`)
+            }else if (response.status === 422){
+                const message = error.detail.map(e => e.msg).join(', ')
+                throw new Error(message)
+            }
+            throw new Error(error.detail || "Error deleting deck")
+        }
+        return response.json()
+    }
+
     const {
         data: deck,
         isLoading: deck_loading,
@@ -105,6 +126,9 @@ export const DeckView = () => {
             queryClient.invalidateQueries({
                 queryKey: ["deck", deck_id]
             })
+            queryClient.invalidateQueries({
+                queryKey: ["my-decks", user?.id]
+            })
         }
     })
 
@@ -119,8 +143,28 @@ export const DeckView = () => {
             queryClient.invalidateQueries({
                 queryKey: ["deck", deck_id]
             })
+            queryClient.invalidateQueries({
+                queryKey: ["my-decks", user?.id]
+            })
             toast.success("Deck deleted")
             navigate(`/`, { replace: true })
+        }
+    })
+
+    const {
+        mutate: cloneMutate,
+        isPending: clonePending
+    } = useMutation({
+        mutationFn: CloneDeck,
+        onSuccess: (data) => {
+            toast.success("Success cloning deck")
+            queryClient.invalidateQueries({
+                queryKey: ["my-decks", user?.id]
+            })
+            navigate(`/decks/${data.deck_id}`)
+        },
+        onError: (error) => {
+            toast.error(error.message)
         }
     })
 
@@ -181,6 +225,13 @@ export const DeckView = () => {
                                                 <button type="button" onClick={() => navigate(`/rooms/new?deck_id=${deck_id}`)} className="flex gap-0.5 items-center bg-sky-500 text-white rounded-md py-1 px-2 hover:cursor-pointer">
                                                     <Gamepad2 className="w-4 h-4" />
                                                     <div>{`Create Room`}</div>
+                                                </button>
+                                        }
+                                        {
+                                            (!userLoading && user) &&
+                                                <button type="button" disabled={clonePending} onClick={() => cloneMutate()} className={`${clonePending ? 'hover:cursor-not-allowed' : 'hover:cursor-pointer'} flex gap-0.5 items-center border border-slate-300 rounded-md py-1 px-2`}>
+                                                    <Copy className="w-4 h-4" />
+                                                    <div>{`Clone Deck`}</div>
                                                 </button>
                                         }
                                     </div>

@@ -1,21 +1,105 @@
-from fastapi import APIRouter, Depends, Request, Body, HTTPException
+from fastapi import APIRouter, Depends, Request, Body, HTTPException, Response
 from fastapi_users.password import PasswordHelper
-from app.db import get_user_db, get_async_session, User, CardProgress, Deck, RoomParticipant, StudySession, CardReview
-from app.users import current_active_user
-from app.schemas import UserUpdate, UserStats
-from sqlalchemy import select, func, case
+from app.db import get_user_db, get_async_session, User, CardProgress, Deck, OAuthAccount, RoomParticipant, StudySession, CardReview, Card, RoomQuestion, RoomQuestionChoice
+from app.users import current_active_user, get_user_manager
+from app.schemas import UserUpdate, UserStats, ChangePasswordRequest
+from sqlalchemy import select, func, case, update, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
+from app.services.s3 import batch_delete_image
 from typing import Annotated
 import logging
 from datetime import date, timedelta, datetime, timezone
 from zoneinfo import ZoneInfo
 from app.timezone import get_user_timezone
+import asyncio
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 password_helper = PasswordHelper()
+
+@limiter.limit("5/minute")
+@router.delete("/users/me")
+async def DeleteAccount(request: Request, response: Response, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    try:
+        end_study_sessions = update(StudySession).where(StudySession.student_id == user.id, StudySession.completed_at.is_(None)).values(completed_at=datetime.now(timezone.utc))
+        await session.execute(end_study_sessions)
+        update_public_decks = update(Deck).where(Deck.creator_id == user.id, Deck.is_public == True).values(creator_id=None)
+        await session.execute(update_public_decks)
+        to_be_deleted_query = select(Card.card_term_url).outerjoin(Card.parent_deck).where(Deck.creator_id == user.id, Deck.is_public.is_(False), and_(Card.card_term_url.is_not(None), Card.card_term_url != "string"))
+        to_be_deleted_result = await session.execute(to_be_deleted_query)
+        to_be_deleted_term_imgs = to_be_deleted_result.scalars().all()
+
+        to_be_deleted_query = select(Card.card_definition_url).outerjoin(Card.parent_deck).where(Deck.creator_id == user.id, Deck.is_public.is_(False), and_(Card.card_definition_url.is_not(None), Card.card_definition_url != "string"))
+        to_be_deleted_result = await session.execute(to_be_deleted_query)
+        to_be_deleted_def_imgs = to_be_deleted_result.scalars().all()
+
+        to_be_deleted_imgs = to_be_deleted_term_imgs + to_be_deleted_def_imgs
+
+        if to_be_deleted_imgs:
+            in_use_query = select(RoomQuestion.prompt_url).where(RoomQuestion.prompt_url.in_(to_be_deleted_imgs))
+            in_use_result = await session.execute(in_use_query)
+            in_use_terms = in_use_result.scalars().all()
+
+            in_use_query = select(RoomQuestionChoice.choice_url).where(RoomQuestionChoice.choice_url.in_(to_be_deleted_imgs))
+            in_use_result = await session.execute(in_use_query)
+            in_use_defs = in_use_result.scalars().all()
+
+            in_use_imgs = in_use_terms + in_use_defs
+            images_to_be_deleted = set(to_be_deleted_imgs) - set(in_use_imgs)
+            if images_to_be_deleted:
+                await asyncio.to_thread(batch_delete_image, list(images_to_be_deleted))
+        
+        delete_private_decks = delete(Deck).where(Deck.creator_id == user.id, Deck.is_public.is_(False))
+        await session.execute(delete_private_decks)
+        await session.execute(delete(OAuthAccount).where(OAuthAccount.user_id == user.id))
+        user.is_deleted = True
+        user.deleted_at = datetime.now(timezone.utc)
+        user.email = f"deleted_{user.id}@deleted.com"
+        user.fname = "Deleted"
+        user.lname = "User"
+        user.hashed_password = ""
+        user.is_active = False
+        await session.commit()
+        response.delete_cookie("fastapiusersauth", httponly=True, secure=IS_PROD, samesite="none" if IS_PROD else "lax")
+        return {"message": "Account Deleted"}
+    except HTTPException:
+        await session.rollback()
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"DeleteAccount failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete account")
+
+        
+@router.patch("/users/password/me")
+@limiter.limit("1/minute")
+async def UpdatePassword(request: Request, passwordObj: Annotated[ChangePasswordRequest, Body()],  user: User = Depends(current_active_user), user_manager = Depends(get_user_manager)):
+    try:
+        if passwordObj.new and passwordObj.old:
+            valid = None
+            if user.hashed_password:
+                valid = password_helper.verify_and_update(passwordObj.old, user.hashed_password)[0]
+                if not valid:
+                    raise HTTPException(status_code=400, detail="Current password is incorrect")
+            await user_manager.update(UserUpdate(password=passwordObj.new), user, safe=True, request=request)
+            return {"message": "Password successfully updated"}
+        elif passwordObj.new and not passwordObj.old:
+            if not user.hashed_password:
+                await user_manager.update(UserUpdate(password=passwordObj.new), user, safe=True, request=request)
+                return {"message": "Password successfully updated"}
+            else:
+                raise HTTPException(status_code=400, detail="Old password is required")    
+        else:
+            raise HTTPException(status_code=400, detail="You need to fill the input fields")
+    except HTTPException:
+        # rollback?
+        raise
+    except Exception as e:
+            #rollback?
+            logger.error(f"UpdatePassword failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to update password")
 
 @limiter.limit("1/min")
 @router.patch("/users/me")

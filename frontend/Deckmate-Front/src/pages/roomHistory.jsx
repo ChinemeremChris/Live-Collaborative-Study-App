@@ -18,18 +18,9 @@ export const RoomHistory = () => {
 
     const CorrectOrdinal = (n) => {
         if (n == 0 || n === null) return '—'
-        const unit = Number(n) % 10
-        switch (unit){
-            case 1:
-                return `${n}st`
-            case 2:
-                return `${n}nd`
-            case 3:
-                return `${n}rd`
-            default:
-                return `${n}st`
-            
-        }
+        const suffixes = ['th', 'st', 'nd', 'rd']
+        const x = n % 100
+        return n + (suffixes[(x-20) % 10] || suffixes[x] || suffixes[0])
     }
 
     const RoomStats = async () => {

@@ -14,7 +14,7 @@ export const DeckResultCard = ({ deck }) => {
                 {/* mini-thumbnail, title, creator */}
                 <div className="flex gap-4">
                     {/* thumbnail */}
-                    <div className="bg-indigo-300 text-indigo-400 w-12 h-12 rounded-4xl flex fhrink-0 justify-center items-center">
+                    <div className="bg-indigo-300 text-indigo-400 w-12 h-12 rounded-4xl flex shrink-0 justify-center items-center">
                         <CardStackIcon className="w-7 h-7" />
                     </div>
                     {/* title & author */}

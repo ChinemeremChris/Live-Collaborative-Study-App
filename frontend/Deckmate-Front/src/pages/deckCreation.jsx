@@ -8,7 +8,7 @@ import { PageSpinner } from "../components/PageSpinner"
 import { TagModal } from "../components/TagModal"
 import toast from "react-hot-toast"
 import { DraftModal } from "../components/DraftModal"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { NotesModal } from "../components/NotesModal"
 
@@ -20,6 +20,7 @@ export const DeckCreate = () => {
             card.term?.trim() || card.definition?.trim()
         )
     }
+    const queryClient = useQueryClient()
     const navigate = useNavigate()
     const {user, userLoading} = useAuth()
     const initialized = useRef(false)
@@ -337,6 +338,9 @@ export const DeckCreate = () => {
         mutationFn: SaveDeck,
         onSuccess: (data) => {
             HandleDiscardDraft()
+            queryClient.invalidateQueries({
+                queryKey: ["my-decks", user?.id]
+            })
             navigate(`/decks/${data.deck_id}`, { replace: true })
         },
         onError: (error) => {

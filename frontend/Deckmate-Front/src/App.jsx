@@ -24,7 +24,10 @@ import { RoundResults } from './components/RoundResults'
 import { GameResult } from './pages/gameResult'
 import { StudyHistory } from './pages/studyHistory'
 import { RoomHistory } from './pages/roomHistory'
-import { Settings } from 'lucide-react'
+import { Settings } from './pages/Settings'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
+import { ForgottenPage } from './pages/Forgotten'
+import { MyPages } from './pages/myPages'
 
 
 const router = createBrowserRouter([
@@ -45,9 +48,14 @@ const router = createBrowserRouter([
     element: <RoundResults />
   },
   {
+    path: "/forgotten",
+    element: <ForgottenPage />
+  },
+  {
     element: <ProtectedRoutes />,
     children: [
       { path: "/complete-profile", element: <CompleteProfile /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
       { path: "/rooms/join", element: <RoomJoin /> },
       { path: "/settings", element: <Settings />},
       {
@@ -75,6 +83,7 @@ const router = createBrowserRouter([
         children: [
           { path: "/decks/create", element: <DeckCreate /> },
           { path: "/decks/edit/:deck_id", element: <DeckEdit /> },
+          { path: "/decks/me", element: <MyPages /> },
           { path: "/rooms/results/:room_id", element: <GameResult /> },
           { path: "/rooms/new", element: <RoomCreate /> },
           { path: "/history/rooms", element: <RoomHistory />},

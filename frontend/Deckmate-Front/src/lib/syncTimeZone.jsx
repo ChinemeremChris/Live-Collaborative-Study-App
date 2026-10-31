@@ -9,5 +9,4 @@ export const syncTimeZone = async () => {
         body: JSON.stringify({ timezone: userTimezone })
     })
     const data = await response.json()
-    console.log('sync response:', response.status, data)
 }
